@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sym-control"
+dynamic = ["version"]
+dependencies = [
+    "numpy",
+    "numba",
+    "pygame"
+]
+license = "MIT"
+readme = "README.md"
+
+[project.urls]
+Repository = "https://github.com/MouadHaikal/Symbolic-Control-Synth"
