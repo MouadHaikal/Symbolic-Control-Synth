@@ -8,7 +8,8 @@ dynamic = ["version"]
 dependencies = [
     "numpy",
     "numba",
-    "pygame"
+    "pygame",
+    "sympy",
 ]
 license = "MIT"
 readme = "README.md"
