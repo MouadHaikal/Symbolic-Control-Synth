@@ -5,19 +5,19 @@ from logger import gLogger
 
 
 class ContinuousSpace:
-    def __init__(self, name: str, dimensions: int, lowerBound, upperBound):
+    def __init__(self, name: str, dimensions: int, lowerBounds, upperBounds):
         self.name = name
         self.dimensions = dimensions
 
-        self.__validateInputDimensions(lowerBound)
-        self.__validateInputDimensions(upperBound)
+        self.__validateInputDimensions(lowerBounds)
+        self.__validateInputDimensions(upperBounds)
 
-        lowerBound = np.array(lowerBound, dtype=np.float32)
-        upperBound = np.array(upperBound, dtype=np.float32)
-        self.__validateBounds(lowerBound, upperBound)
+        lowerBounds = np.array(lowerBounds, dtype=np.float32)
+        upperBounds = np.array(upperBounds, dtype=np.float32)
+        self.__validateBounds(lowerBounds, upperBounds)
 
-        self.lowerBound = lowerBound
-        self.upperBound = upperBound
+        self.lowerBounds = lowerBounds
+        self.upperBounds = upperBounds
         
         self.__symbols = sp.symbols(f"{self.name}(1:{self.dimensions+1})")
         if not isinstance(self.__symbols, tuple):
@@ -38,5 +38,5 @@ class ContinuousSpace:
                     f"Inconsistent bounds at dimension {i + 1}: "
                     f"lower bound {lowerBound[i]} cannot be greater than upper bound {upperBound[i]}"
                 )
-            gLogger.error(f"Dimension mismatch (input:{len(input)} != expected:{self.dimensions})")
+            # gLogger.error(f"Dimension mismatch (input:{len(input)} != expected:{self.dimensions})")
             # TODO: exit

@@ -14,8 +14,8 @@ class DiscreteSpace(ContinuousSpace):
 
     def getCellCoords(self, point) -> np.ndarray:
         self.__assertWithinBounds(point, 
-                              self.lowerBound, 
-                              self.upperBound)
+                              self.lowerBounds, 
+                              self.upperBounds)
 
         normX =  np.array([point[i] / (self.upperBounds[i] - self.lowerBounds[i]) for i in range(self.dimensions)])
         coords = np.array([int(normX[i] * self.resolutions[i]) for i in range(self.dimensions)])
@@ -28,7 +28,7 @@ class DiscreteSpace(ContinuousSpace):
         return coords
 
     def getCell(self, coords) -> Cell:
-        self.__isWithinBounds(coords, 
+        self.__assertWithinBounds(coords, 
                               np.zeros(self.dimensions), 
                               self.resolutions)
 
