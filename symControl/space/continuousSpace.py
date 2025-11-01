@@ -1,19 +1,21 @@
 import numpy as np
 import sympy as sp
 
+from logger import gLogger
+
+
 class ContinuousSpace:
-    def __init__(self, name : str, dimensions: int, lowerBound, upperBound):
+    def __init__(self, name : str, dimensions: int, lowerBounds, upperBounds):
         self.name = name
         self.dimensions = dimensions
 
-        self.__validateInputDimensions(lowerBound)
-        self.lowerBound = np.ndarray(lowerBound)
+        self.__validateInputDimensions(lowerBounds)
+        self.lowerBounds = np.ndarray(lowerBounds)
 
-        self.__validateInputDimensions(upperBound)
-        self.upperBound = np.ndarray(upperBound)
+        self.__validateInputDimensions(upperBounds)
+        self.upperBounds = np.ndarray(upperBounds)
         
-        labels = [f"{self.name}{i}" for i in range(1, self.dimensions + 1)]
-        self.__symbols = sp.symbols(labels)
+        self.__symbols = sp.symbols(f"{self.name}(1:{self.dimensions+1})")
         if not isinstance(self.__symbols, tuple):
             self.__symbols = (self.__symbols,)
 
@@ -25,5 +27,5 @@ class ContinuousSpace:
 
     def __validateInputDimensions(self, input):
         if self.dimensions != len(input):
-            raise RuntimeError(f"Dimension mismatch (input:{len(input)} != expected:{self.dimensions})")
-
+            gLogger.error(f"Dimension mismatch (input:{len(input)} != expected:{self.dimensions})")
+            # TODO: exit
