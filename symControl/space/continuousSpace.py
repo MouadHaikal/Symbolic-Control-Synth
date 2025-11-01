@@ -1,6 +1,9 @@
 import numpy as np
 import sympy as sp
 
+from logger import gLogger
+
+
 class ContinuousSpace:
     def __init__(self, name: str, dimensions: int, lowerBound, upperBound):
         self.name = name
@@ -16,8 +19,7 @@ class ContinuousSpace:
         self.lowerBound = lowerBound
         self.upperBound = upperBound
         
-        labels = [f"{self.name}{i}" for i in range(1, self.dimensions + 1)]
-        self.__symbols = sp.symbols(labels)
+        self.__symbols = sp.symbols(f"{self.name}(1:{self.dimensions+1})")
         if not isinstance(self.__symbols, tuple):
             self.__symbols = (self.__symbols,)
 
@@ -36,3 +38,5 @@ class ContinuousSpace:
                     f"Inconsistent bounds at dimension {i + 1}: "
                     f"lower bound {lowerBound[i]} cannot be greater than upper bound {upperBound[i]}"
                 )
+            gLogger.error(f"Dimension mismatch (input:{len(input)} != expected:{self.dimensions})")
+            # TODO: exit

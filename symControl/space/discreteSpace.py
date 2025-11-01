@@ -2,13 +2,14 @@ import numpy as np
 from .continuousSpace import ContinuousSpace
 from .cell import Cell
 
+
 class DiscreteSpace(ContinuousSpace):
-    def __init__(self, name : str, dimensions: int, lowerBound, upperBound, resolutions):
-        super().__init__(name, dimensions, lowerBound, upperBound)
+    def __init__(self, name : str, dimensions: int, lowerBounds, upperBounds, resolutions):
+        super().__init__(name, dimensions, lowerBounds, upperBounds)
 
         self.__validateInputDimensions(resolutions)
         self.resolutions = resolutions
-        self.__cellSize = [(upperBound[i] - lowerBound[i]) / resolutions[i] for i in range(dimensions)]
+        self.__cellSize = [(upperBounds[i] - lowerBounds[i]) / resolutions[i] for i in range(dimensions)]
 
 
     def getCellCoords(self, point) -> np.ndarray:
@@ -16,7 +17,7 @@ class DiscreteSpace(ContinuousSpace):
                               self.lowerBound, 
                               self.upperBound)
 
-        normX =  np.array([point[i] / (self.upperBound[i] - self.lowerBound[i]) for i in range(self.dimensions)])
+        normX =  np.array([point[i] / (self.upperBounds[i] - self.lowerBounds[i]) for i in range(self.dimensions)])
         coords = np.array([int(normX[i] * self.resolutions[i]) for i in range(self.dimensions)])
 
         # Avoid out of bound mapping
@@ -32,7 +33,7 @@ class DiscreteSpace(ContinuousSpace):
                               self.resolutions)
 
 
-        lowerBound = [self.lowerBound[i] + coords[i] * self.__cellSize[i] for i in range(self.dimensions)]
+        lowerBound = [self.lowerBounds[i] + coords[i] * self.__cellSize[i] for i in range(self.dimensions)]
         upperBound = [lowerBound[i] + self.__cellSize[i] for i in range(self.dimensions)]
 
         return Cell(lowerBound, upperBound)
