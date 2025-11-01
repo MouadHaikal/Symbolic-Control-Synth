@@ -12,7 +12,7 @@ class DiscreteSpace(ContinuousSpace):
 
 
     def getCellCoords(self, point) -> np.ndarray:
-        self.__isWithinBounds(point, 
+        self.__assertWithinBounds(point, 
                               self.lowerBound, 
                               self.upperBound)
 
@@ -38,7 +38,7 @@ class DiscreteSpace(ContinuousSpace):
         return Cell(lowerBound, upperBound)
 
         
-    def __isWithinBounds(self, vector, lowerBounds, upperBounds) -> bool:
+    def __assertWithinBounds(self, vector, lowerBounds, upperBounds) -> bool:
         self.__validateInputDimensions(vector)
 
         verdict = True
