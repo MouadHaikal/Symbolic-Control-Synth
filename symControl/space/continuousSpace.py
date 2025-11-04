@@ -19,13 +19,6 @@ class ContinuousSpace:
         self.lowerBounds = lowerBounds
         self.upperBounds = upperBounds
         
-        self.__symbols = sp.symbols(f"{self.name}(1:{self.dimensions+1})")
-        if not isinstance(self.__symbols, tuple):
-            self.__symbols = (self.__symbols,)
-
-    @property
-    def labels(self) -> tuple:
-        return self.__symbols
 
     def __validateInputDimensions(self, input):
         if self.dimensions != len(input):

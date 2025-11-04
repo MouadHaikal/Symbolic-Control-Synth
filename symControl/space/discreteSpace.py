@@ -24,7 +24,6 @@ class DiscreteSpace(ContinuousSpace):
         for i in range(len(coords)):
             if coords[i] == self.resolutions[i]:
                 coords[i] -= 1
-
         return coords
 
     def getCell(self, coords) -> Cell:
