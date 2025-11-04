@@ -1,6 +1,9 @@
+import numpy as np
 class Cell:
-    def __init__(self, lowerBound, upperBound):
-        self.lowerBound = lowerBound
-        self.upperBound = upperBound
+    __slots__ = ['lowerBound', 'upperBound', 'center']
 
-        self.center = [(upperBound[i] + lowerBound[i]) / 2 for i in range(len(lowerBound))]
+    def __init__(self, lowerBound, upperBound):
+        self.lowerBound = np.array(lowerBound)
+        self.upperBound = np.array(upperBound)
+
+        self.center = (self.upperBound + self.lowerBound) / 2
