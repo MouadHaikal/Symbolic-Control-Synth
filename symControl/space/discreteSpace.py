@@ -76,4 +76,4 @@ class DiscreteSpace(ContinuousSpace):
             ) for i in range(self.dimensions)
         ]
 
-        return Cell(cellBounds)
+        return Cell(self.dimensions, cellBounds)
