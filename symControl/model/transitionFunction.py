@@ -1,134 +1,164 @@
 import sympy as sp
 import numpy as np
+
+from scipy.optimize import minimize
+
 from symControl.space.discreteSpace import DiscreteSpace
+from symControl.utils.validation import *
+from symControl.utils.constants import *
 
-SYMBOLS = {
-    'tau': sp.Symbol('tau'),
-    'cos': sp.cos,
-    'sin': sp.sin,
-    'tan': sp.tan,
-    'exp': sp.exp,
-    'sqrt': sp.sqrt,
-    'log': sp.log,
-    'pi': sp.pi,
-    'e': sp.E
-}
-
-class EquationParser:
-    _instance = None
-
-    @classmethod
-    def getInstance(cls):
-        if cls._instance is None:
-            cls._instance = cls(SYMBOLS)
-        return cls._instance
-
-
-    def __init__(self, global_symbols: dict=SYMBOLS):
-        self.global_symbols = global_symbols        
-    
-    def parse_equation(self, equation_str: str, local_symbols: dict) -> sp.Expr:
-        """
-        Parses a single equation string into a SymPy expression.
-        Combines global symbols (like math functions) and local symbols (state, control, disturbance).
-        """
-        all_symbols = {**self.global_symbols, **local_symbols}
-
-        try:
-            return sp.parse_expr(equation_str, local_dict=all_symbols)
-        except Exception as e:
-            raise ValueError(f"Error parsing equation '{equation_str}': {e}")
-
-
+ 
 class TransitionFunction:
-    def __init__(self, stateSpace: DiscreteSpace, 
-                 controlSpace: DiscreteSpace, 
+    """
+    Represents the transition dynamics for a controlled dynamical system with disturbance.
+
+    Encapsulates the symbolic equations governing state evolution given
+    discrete state, control, and disturbance spaces. Provides methods for
+    numerical evaluation of transitions and for verifying cooperative system structure.
+
+    Attributes:
+        symbolContext (dict): Dictionary mapping system variable names to symbolic representations.
+        timeStep (float): Integration time step value (TAU).
+        dimensions (dict): Number of dimensions for state, control, and disturbance spaces.
+        symbolBounds (dict): Bounds for each symbol variable in the system.
+        equations (Tuple[sympy.Expr, ...]): Tuple of parsed transition equations.
+        isCooperative (bool): Whether the system satisfies the cooperative property.
+        _lambdaFunctions (List[callable]): List of lambda functions for evaluating equations numerically.
+    """
+    __slots__ = ['symbolContext', 'timeStep', 'symbolBounds', 'dimensions', 'equations', 'isCooperative', '_lambdaFunctions']
+
+    def __init__(self, 
+                 stateSpace:       DiscreteSpace, 
+                 controlSpace:     DiscreteSpace, 
                  disturbanceSpace: DiscreteSpace,
-                 timeStep: float,
-                 equations: list[str]):
-        """
-        """
+                 timeStep:         float,
+                 equations:        Sequence[str]
+    ):
+        validateDimensions(equations, stateSpace.dimensions)
 
-        self.timeStep = timeStep # tau is used to conform with our symbols
+        self.symbolContext = {
+            **{f"{STATE}{i+1}": sp.Symbol(f"{STATE}{i+1}") 
+                for i in range(stateSpace.dimensions)},
 
-        self.symbols = {
-            "x": self.createSpaceSymbols("x", stateSpace.dimensions),
-            "u": self.createSpaceSymbols("u", controlSpace.dimensions),
-            "w": self.createSpaceSymbols("w", disturbanceSpace.dimensions),
+            **{f"{CONTROL}{i+1}": sp.Symbol(f"{CONTROL}{i+1}") 
+                for i in range(controlSpace.dimensions)},
+
+            **{f"{DISTURBANCE}{i+1}": sp.Symbol(f"{DISTURBANCE}{i+1}") 
+                for i in range(disturbanceSpace.dimensions)},
+
+            TAU: sp.Symbol(TAU, positive=True)
         }
+
+        self.timeStep = timeStep  # Value of the TAU symbol
 
         self.dimensions = {
-            "x": stateSpace.dimensions,
-            "u": controlSpace.dimensions,
-            "w": disturbanceSpace.dimensions,
+            STATE: stateSpace.dimensions,
+            CONTROL: controlSpace.dimensions,
+            DISTURBANCE: disturbanceSpace.dimensions,
         }
 
-        self.bounds = {
-            stateSpace.name: (stateSpace.lowerBounds, stateSpace.upperBounds),
-            disturbanceSpace.name: (disturbanceSpace.lowerBounds, disturbanceSpace.upperBounds),
+        self.symbolBounds = {
+            **{f"{STATE}{i+1}": stateSpace.bounds[i] for i in range(stateSpace.dimensions)},
+            **{f"{CONTROL}{i+1}": controlSpace.bounds[i] for i in range(controlSpace.dimensions)},
+            **{f"{DISTURBANCE}{i+1}": disturbanceSpace.bounds[i] for i in range(disturbanceSpace.dimensions)}
         }
 
-        self.checkDimension(equations, stateSpace.dimensions)
+        self.equations = tuple(sp.parse_expr(eq, local_dict=self.symbolContext) for eq in equations)
 
-        # self.equations is now a list of sympy expressions
-        self.equations = self.parseEquations(equations)
+        self.isCooperative = self.__cooperativeCheck();
 
-
-    def checkDimension(self, input, dimension):
-        if len(input) != dimension:
-            raise ValueError(f"Number of equations ({len(input)}) must dimensions ({dimension}).")
+        self._lambdaFunctions = [sp.lambdify(self.symbolContext.keys(), eq, modules="numpy") for eq in self.equations]
 
 
-    def createSpaceSymbols(self, name, dimensions) -> tuple:
-        symbols = sp.symbols(f"{name}(1:{dimensions+1})")
-        if not isinstance(symbols, tuple):
-            symbols = (symbols,)
-        return symbols
-
-    def parseEquations(self, equations: list[str]):
-        local_symbols_for_parser = {}
-        for key, sym_tuple in self.symbols.items():
-            for i, sym in enumerate(sym_tuple):
-                local_symbols_for_parser[f"{key}{i+1}"] = sym
-        
-        equationParser = EquationParser.getInstance()
-
-        parsed_equations = []
-        for eq in equations:
-            parsed_equations.append(equationParser.parse_equation(eq, 
-                                                                  local_symbols=local_symbols_for_parser))
-
-        # to enable efficient computations we can convert them to lamba functions which are backed by the computation efficieny of numpy
-        self._lambda_functions = self.lambdify_functions(parsed_equations)
-
-        return parsed_equations
-
-    def lambdify_functions(self, parsed_equations):
+    def evaluate(self, state: Sequence[float], control: Sequence[float], disturbance: Sequence[float]) -> Tuple[float, ...]:
         """
-        It belongs to the transitionFunction class because it is not the responsibility of the parser to lambdify the functions
-        Creates lambdified functions for each parsed equation, allowing efficient numerical evaluation.
+        Evaluates the system's transition equations at the given state, control, and disturbance inputs.
+
+        Concatenates all input vectors and time step, then applies each symbolic transition equation
+        to compute the next system state numerically using precompiled lambda functions.
+
+        Args:
+            state (Sequence[float]): Current state vector.
+            control (Sequence[float]): Control input vector.
+            disturbance (Sequence[float]): Disturbance input vector.
+
+        Returns:
+            Tuple[float, ...]: The numerically evaluated next state as a tuple of floats.
+
+        Raises:
+            ValueError: If the state, control, or disturbance vectors do not have the expected dimensions.
         """
-        all_variables = []
-        # Order matters for lambdify, so we'll collect them in a consistent way
-        all_variables.extend(self.symbols["x"])
-        all_variables.extend(self.symbols["u"])
-        all_variables.extend(self.symbols["w"])
-        all_variables.append(SYMBOLS['tau'])
+        validateDimensions(state, self.dimensions[STATE])
+        validateDimensions(control, self.dimensions[CONTROL])
+        validateDimensions(disturbance, self.dimensions[DISTURBANCE])
+
+        inputContext = np.concatenate((state, control, disturbance))
+        inputContext = np.append(inputContext, self.timeStep)
         
-        lambdified_funcs = []
-        for eq in parsed_equations:
-            lambdified_funcs.append(sp.lambdify(all_variables, eq, modules='numpy'))
-        return lambdified_funcs
+        return tuple(func(*inputContext) for func in self._lambdaFunctions)
 
-    def evaluate(self, current_state, control_input, disturbance_input):
 
-        self.checkDimension(current_state, self.dimensions["x"])
-        self.checkDimension(control_input, self.dimensions["u"])
-        self.checkDimension(disturbance_input, self.dimensions["w"])
+    def __cooperativeCheck(self) -> bool:
+        """
+        Checks whether the transition equations satisfy the cooperative system property.
 
-        all_inputs = np.concatenate((current_state, control_input, disturbance_input))
-        all_inputs = np.append(all_inputs, self.timeStep)
-        
-        results = [func(*all_inputs) for func in self._lambda_functions]
-        return results
+        Computes the Jacobian matrices of all transition functions with respect to state
+        and disturbance variables, then minimizes each partial derivative over allowed bounds.
+        Returns True only if all minimum partial derivatives are non-negative, indicating
+        cooperation with respect to state and disturbance.
 
+        Returns:
+            bool: True if the system is cooperative, False otherwise.
+        """
+        jacX = sp.Matrix([
+            [
+                sp.diff(eq, self.symbolContext[f"{STATE}{i+1}"]) 
+                    for i in range(self.dimensions[STATE])
+            ] 
+            for eq in self.equations
+        ])
+
+        jacW = sp.Matrix([
+            [
+                sp.diff(eq, self.symbolContext[f"{DISTURBANCE}{i+1}"]) 
+                    for i in range(self.dimensions[DISTURBANCE])
+            ] 
+            for eq in self.equations
+        ])
+
+
+        def minVal(expr):
+            expr = expr.subs({self.symbolContext[TAU]: self.timeStep}).simplify()
+
+            if expr.is_number:
+                return expr.evalf()
+
+            vars = sorted(
+                [v for v in expr.free_symbols if v.name != TAU],
+                key=lambda x: x.name
+            )
+
+            lmbd = sp.lambdify(vars, expr, "numpy")
+
+            def func(x):
+                return lmbd(*x)
+
+            varBounds = [self.symbolBounds[var.name] for var in vars]
+            x0        = [(bd[1] + bd[0]) / 2 for bd in varBounds]
+
+            result = minimize(func, x0, method="L-BFGS-B", bounds=varBounds)
+
+            return result.fun
+
+
+        for i in range(jacX.rows):
+            for j in range(jacX.cols):
+                if minVal(jacX[i,j]) < 0.0:
+                    return False
+
+        for i in range(jacW.rows):
+            for j in range(jacW.cols):
+                if minVal(jacW[i,j]) < 0.0:
+                    return False
+
+        return True

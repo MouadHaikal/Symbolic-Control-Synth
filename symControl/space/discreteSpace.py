@@ -1,48 +1,79 @@
-import numpy as np
 from .continuousSpace import ContinuousSpace
 from .cell import Cell
+from symControl.utils.validation import *
+
+from math import floor
+
 
 class DiscreteSpace(ContinuousSpace):
-    __slots__ = ['resolutions', '__cellSize']
+    """
+    Represents a discretized, multi-dimensional space, subdivided into grid cells of fixed resolution.
 
-    def __init__(self, name : str, dimensions: int, lowerBounds, upperBounds, resolutions):
-        super().__init__(name, dimensions, lowerBounds, upperBounds)
+    Inherits from ContinuousSpace, specifying a decomposition of each dimension into a finite number
+    of cells. Provides methods to map between points in continuous space and discrete grid coordinates.
 
-        self._validateInputDimensions(resolutions)
-        self.resolutions = np.array(resolutions)
-        self.__cellSize = (self.upperBounds - self.lowerBounds) / self.resolutions
+    Attributes:
+        __resolutions (Tuple[int, ...]): The number of discrete cells per dimension.
+        __cellSize (Tuple[float, ...]): The size of each cell per dimension.
+    """
+    __slots__ = ['__resolutions', '__cellSize']
+
+    def __init__(self, name : str, dimensions: int, bounds: Sequence[Tuple[float, float]], resolutions: Sequence[int]):
+        super().__init__(name, dimensions, bounds)
+        validateDimensions(resolutions, dimensions)
+
+        self.__resolutions = tuple(resolutions)
+        self.__cellSize    = tuple(
+            (bounds[i][1] - bounds[i][0]) / resolutions[i] 
+            for i in range(dimensions)
+        )
 
 
-    def getCellCoords(self, point) -> np.ndarray:
-        point = np.array(point)
-        self.__assertWithinBounds(point, 
-                              self.lowerBounds, 
-                              self.upperBounds)
+    def getCellCoords(self, point: Sequence[float]) -> Tuple[int, ...]:
+        """
+        Maps a continuous point to its corresponding discrete grid cell coordinates.
 
-        normX = (point - self.lowerBounds) / (self.upperBounds - self.lowerBounds)
-        coords = np.floor(normX * self.resolutions).astype(int)
+        Args:
+            point (Sequence[float]): A point in the continuous space.
 
-        # Avoid out of bound mapping
-        coords = np.minimum(coords, self.resolutions - 1)
+        Returns:
+            Tuple[int, ...]: The tuple of cell indices corresponding to the input point.
+
+        Raises:
+            ValueError: If the point is out of bounds or has the wrong dimensionality.
+        """
+        validateDimensions(point, self.dimensions)
+        validatePointBounds(point, self.bounds)
+
+        normalized = [(point[i] - self.bounds[i][0]) / (self.bounds[i][1] - self.bounds[i][0]) for i in range(self.dimensions)]
+
+        coords = tuple(
+            min(floor(normalized[i] * self.__resolutions[i]), self.__resolutions[i] - 1) 
+            for i in range(self.dimensions)
+        )
+
         return coords
 
-    def getCell(self, coords) -> Cell:
-        coords = np.array(coords)
-        self.__assertWithinBounds(coords, 
-                              np.zeros(self.dimensions), 
-                              self.resolutions)
+    def getCell(self, coords: Sequence[int]) -> Cell:
+        """
+        Returns the cell object corresponding to the given cell coordinates.
 
+        Args:
+            coords (Sequence[int]): The discrete grid coordinates.
 
-        lowerBound = self.lowerBounds + coords * self.__cellSize
-        upperBound = lowerBound + self.__cellSize
+        Returns:
+            Cell: The cell object defined by the computed bounds.
 
-        return Cell(lowerBound, upperBound)
+        Raises:
+            ValueError: If the coordinates have the wrong dimensionality.
+        """
+        validateDimensions(coords, self.dimensions)
 
-        
-    def __assertWithinBounds(self, vector, lowerBounds, upperBounds) -> bool:
-        vector = np.array(vector)
-        self._validateInputDimensions(vector)
+        cellBounds = [
+            (
+                self.bounds[i][0] + self.__cellSize[i] * coords[i],
+                self.bounds[i][0] + self.__cellSize[i] * (coords[i] + 1)
+            ) for i in range(self.dimensions)
+        ]
 
-        if not np.all((vector >= lowerBounds) & (vector < upperBounds)):
-                raise RuntimeError("vector out of bounds")
-        return True
+        return Cell(cellBounds)
