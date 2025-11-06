@@ -1,5 +1,12 @@
 [build-system]
-requires = ["setuptools >= 77.0.3"]
+requires = [
+    "setuptools >= 77.0.3",
+    "scikit-build-core >= 0.11",
+    "pybind11>= 3.0",
+    "wheel",
+    "ninja",
+    "cmake"
+]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,10 +17,14 @@ dependencies = [
     "numba",
     "pygame",
     "sympy",
-    "scipy"
+    "scipy",
+    "pybind11"
 ]
 license = "MIT"
 readme = "README.md"
 
 [project.urls]
 Repository = "https://github.com/MouadHaikal/Symbolic-Control-Synth"
+
+[tool.setuptools.packages.find]
+include = ["symControl", "cpp"]

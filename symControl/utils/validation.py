@@ -50,3 +50,20 @@ def validatePointBounds(point: Sequence[float], bounds: Sequence[Tuple[float, fl
     for i, (low, high) in enumerate(bounds):
         if point[i] < low or point[i] > high:
             raise ValueError(f"Element at index {i} ({point[i]}) is out of bounds ({low}, {high})")
+
+def validateRangeBounds(intervals: Sequence[Tuple[float, float]], bounds: Sequence[Tuple[float, float]]) -> None:
+    """
+    Validates that the interval given lies completely within the specified bounds of the space it belongs to.
+    It is up to the developer to validate the dimensionality of the interval before calling this function, refer to validateDimensions.
+
+    Args:
+        intervals (Sequence[Tuple[float, float]]): The interval range to validate.
+        bounds (Sequence[Tuple[float, float]]): The bounds to respect 
+
+    Raises:
+        ValueError: If any range is not contained within its respective bounds.
+    """
+
+    for dim in range(len(intervals)):
+        if intervals[dim][0] < bounds[dim][0] or intervals[dim][1] > bounds[dim][1]:
+            raise ValueError(f"Range at index {dim} isn't contained within parent space: {intervals[dim]} ⊄ {bounds[dim]}")
