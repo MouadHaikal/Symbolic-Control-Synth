@@ -4,9 +4,10 @@
 
 ## Recommended quick start (development)
 
-1. Create and activate a Python virtual environment in the project root directory:
+1. Fetch missing submodules, Create and activate a Python virtual environment in the project root directory:
 
 ```bash
+git submodule update --init --recurse
 python -m venv venv
 source .venv/bin/activate
 ```
