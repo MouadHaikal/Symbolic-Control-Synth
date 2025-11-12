@@ -29,12 +29,12 @@ class DiscreteSpace(ContinuousSpace):
         )
 
 
-    def getCellCoords(self, point: Sequence[float]) -> Tuple[int, ...]:
+    def getCellCoords(self, point: Sequence[float] | Cell) -> Tuple[int, ...]:
         """
         Maps a continuous point to its corresponding discrete grid cell coordinates.
 
         Args:
-            point (Sequence[float]): A point in the continuous space.
+            point (Sequence[float]) | Cell: If first type, it is point in the continuous space, otherwise a cell of that space.
 
         Returns:
             Tuple[int, ...]: The tuple of cell indices corresponding to the input point.
@@ -42,17 +42,20 @@ class DiscreteSpace(ContinuousSpace):
         Raises:
             ValueError: If the point is out of bounds or has the wrong dimensionality.
         """
-        validateDimensions(point, self.dimensions)
-        validatePointBounds(point, self.bounds)
+        if isinstance(point, Cell):
+            return self.getCellCoords(point.center)
+        else:
+            validateDimensions(point, self.dimensions)
+            validatePointBounds(point, self.bounds)
 
-        normalized = [(point[i] - self.bounds[i][0]) / (self.bounds[i][1] - self.bounds[i][0]) for i in range(self.dimensions)]
+            normalized = [(point[i] - self.bounds[i][0]) / (self.bounds[i][1] - self.bounds[i][0]) for i in range(self.dimensions)]
 
-        coords = tuple(
-            min(floor(normalized[i] * self.__resolutions[i]), self.__resolutions[i] - 1) 
-            for i in range(self.dimensions)
-        )
+            coords = tuple(
+                min(floor(normalized[i] * self.__resolutions[i]), self.__resolutions[i] - 1) 
+                for i in range(self.dimensions)
+            )
 
-        return coords
+            return coords
 
     def getCell(self, coords: Sequence[int]) -> Cell:
         """
@@ -66,6 +69,7 @@ class DiscreteSpace(ContinuousSpace):
 
         Raises:
             ValueError: If the coordinates have the wrong dimensionality.
+            ValueError: If the bounds of the cell lie outside the bounds of the state space
         """
         validateDimensions(coords, self.dimensions)
 
@@ -76,4 +80,18 @@ class DiscreteSpace(ContinuousSpace):
             ) for i in range(self.dimensions)
         ]
 
+        validateRangeBounds(cellBounds, self.bounds)
+
         return Cell(self.dimensions, cellBounds)
+
+    def getCellSize(self) -> Tuple[float,...]:
+        """
+        Get the size of any cell in the space
+
+        Args:
+            Nothing
+
+        Returns:
+            Tuple[float,...]: self.__cellSize
+        """
+        return self.__cellSize;

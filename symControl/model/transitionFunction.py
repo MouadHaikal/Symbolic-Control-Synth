@@ -98,6 +98,9 @@ class TransitionFunction:
         return tuple(func(*inputContext) for func in self._lambdaFunctions)
 
 
+    # to be implemented
+    # TODO: evaluate(self, state: ContinuousSpace, control: Sequence[float], distrubance: Sequence[float]) -> ContinuousSpace
+
     def __cooperativeCheck(self) -> bool:
         """
         Checks whether the transition equations satisfy the cooperative system property.

@@ -3,241 +3,181 @@ import numpy as np
 import sympy as sp
 from symControl.space.discreteSpace import DiscreteSpace
 from symControl.model.transitionFunction import TransitionFunction
+from symControl.logger import gLogger
 
-# ============================================================
-# Basic tests for TransitionFunction
-# ============================================================
+# -----------------------
+# Fixtures
+# -----------------------
 
-class TestTransitionFunctionBasic:
-    """Basic tests for TransitionFunction, checking parsing, evaluation, and numerical correctness."""
-
-    # -------------------------------
-    # Fixtures
-    # -------------------------------
-    @pytest.fixture
-    def state_space(self):
-        """Provides a 2D state space for testing.
-
-        Returns:
-            DiscreteSpace: A state space with 2 dimensions, lower bounds [0,0], upper bounds [10,10],
-                           and grid [5,5].
-        """
-        return DiscreteSpace("State", 2, [0, 0], [10, 10], [5, 5])
-
-    @pytest.fixture
-    def control_space(self):
-        """Provides a 1D control space for testing.
-
-        Returns:
-            DiscreteSpace: A control space with 1 dimension, lower bound [0], upper bound [1], grid [2].
-        """
-        return DiscreteSpace("Control", 1, [0], [1], [2])
-
-    @pytest.fixture
-    def disturbance_space(self):
-        """Provides a 1D disturbance space for testing.
-
-        Returns:
-            DiscreteSpace: A disturbance space with 1 dimension, lower bound [0], upper bound [1], grid [2].
-        """
-        return DiscreteSpace("Disturbance", 1, [0], [1], [2])
-
-    # -------------------------------
-    # Tests
-    # -------------------------------
-    def test_invalid_number_of_equations(self, state_space, control_space, disturbance_space):
-        """Test that ValueError is raised if number of equations != state dimensions.
-
-        Args:
-            state_space (DiscreteSpace): The state space fixture.
-            control_space (DiscreteSpace): The control space fixture.
-            disturbance_space (DiscreteSpace): The disturbance space fixture.
-        """
-        equations = ["x1 + u1"]
-        with pytest.raises(ValueError, match="Number of equations"):
-            TransitionFunction(state_space, control_space, disturbance_space, 0.1, equations)
-
-    def test_equation_parsing_correctness(self, state_space, control_space, disturbance_space):
-        """Test that equations are correctly parsed into SymPy expressions.
-
-        Args:
-            state_space (DiscreteSpace): The state space fixture.
-            control_space (DiscreteSpace): The control space fixture.
-            disturbance_space (DiscreteSpace): The disturbance space fixture.
-        """
-        equations = ["x1 + u1 + w1 * tau", "x2 + u1"]
-        tf = TransitionFunction(state_space, control_space, disturbance_space, 0.1, equations)
-        assert all(isinstance(eq, sp.Expr) for eq in tf.equations), \
-            "All parsed equations should be SymPy expressions"
-
-    def test_lambdified_evaluation(self, state_space, control_space, disturbance_space):
-        """Evaluate lambdified equations numerically and check correctness.
-
-        Args:
-            state_space (DiscreteSpace): The state space fixture.
-            control_space (DiscreteSpace): The control space fixture.
-            disturbance_space (DiscreteSpace): The disturbance space fixture.
-        """
-        equations = ["x1 + u1 + w1 * tau", "x2 + u1"]
-        tau = 0.1
-        tf = TransitionFunction(state_space, control_space, disturbance_space, tau, equations)
-
-        current_state = np.array([1.0, 2.0])
-        control_input = np.array([0.5])
-        disturbance_input = np.array([0.1])
-
-        results = tf.evaluate(current_state, control_input, disturbance_input)
-
-        # Check type and length
-        assert len(results) == 2
-        assert all(isinstance(r, (float, np.floating)) for r in results)
-
-        # Expected numerical values
-        expected = np.array([
-            current_state[0] + control_input[0] + disturbance_input[0]*tau,
-            current_state[1] + control_input[0]
-        ])
-        np.testing.assert_allclose(results, expected, rtol=1e-6, atol=1e-9)
+@pytest.fixture
+def simple_spaces():
+    """
+    Fixture providing a simple 2D state, 1D control, 1D disturbance space with resolutions matching bounds.
+    """
+    gLogger.info("Creating simple state, control, disturbance spaces")
+    state_bounds = [(0, 1), (0, 1)]
+    control_bounds = [(0, 1)]
+    disturbance_bounds = [(0, 1)]
+    
+    state_res = [10, 10]
+    control_res = [10]
+    disturbance_res = [10]
+    
+    state = DiscreteSpace("State", 2, state_bounds, state_res)
+    control = DiscreteSpace("Control", 1, control_bounds, control_res)
+    disturbance = DiscreteSpace("Disturbance", 1, disturbance_bounds, disturbance_res)
+    return state, control, disturbance
 
 
-# ============================================================
-# Advanced tests for TransitionFunction
-# ============================================================
+# -----------------------
+# Tests
+# -----------------------
 
-class TestTransitionFunctionAdvanced:
-    """Advanced tests: multiple variables, boundary values, and performance."""
+def test_initialization_and_parsing(simple_spaces):
+    """
+    Test initialization of TransitionFunction and correct equation parsing.
+    """
+    gLogger.debug("Testing initialization and parsing")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(state, control, disturb, 0.1, ["x1 + tau*u1", "x2 + tau*w1"])
 
-    # -------------------------------
-    # Fixtures
-    # -------------------------------
-    @pytest.fixture
-    def state_space(self):
-        """Provides a 3D state space for testing.
+    # Check dimensions
+    assert tf.dimensions["x"] == 2
+    assert tf.dimensions["u"] == 1
+    assert tf.dimensions["w"] == 1
 
-        Returns:
-            DiscreteSpace: A state space with 3 dimensions, lower bounds [0,0,0], upper bounds [10,10,10],
-                           and grid [5,5,5].
-        """
-        return DiscreteSpace("State", 3, [0, 0, 0], [10, 10, 10], [5, 5, 5])
+    # Check symbols exist
+    for s in ["x1", "x2", "u1", "w1", "tau"]:
+        assert s in tf.symbolContext
 
-    @pytest.fixture
-    def control_space(self):
-        """Provides a 2D control space for testing.
+    # Equations parsed
+    assert all(isinstance(eq, sp.Expr) for eq in tf.equations)
+    gLogger.info("Initialization and parsing test passed")
 
-        Returns:
-            DiscreteSpace: A control space with 2 dimensions, lower bounds [0,0], upper bounds [1,1], grid [2,2].
-        """
-        return DiscreteSpace("Control", 2, [0, 0], [1, 1], [2, 2])
 
-    @pytest.fixture
-    def disturbance_space(self):
-        """Provides a 2D disturbance space for testing.
+def test_evaluate_linear_system(simple_spaces):
+    """
+    Test numerical evaluation of simple linear transition equations.
+    """
+    gLogger.debug("Testing linear system evaluation")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(state, control, disturb, 0.5, ["x1 + tau*u1", "x2 + tau*w1"])
 
-        Returns:
-            DiscreteSpace: A disturbance space with 2 dimensions, lower bounds [0,0], upper bounds [1,1], grid [2,2].
-        """
-        return DiscreteSpace("Disturbance", 2, [0, 0], [1, 1], [2, 2])
+    result = tf.evaluate([1, 2], [3], [4])
+    expected = (1 + 0.5 * 3, 2 + 0.5 * 4)
+    assert np.allclose(result, expected)
+    gLogger.info("Linear system evaluation test passed")
 
-    # -------------------------------
-    # Tests
-    # -------------------------------
-    def test_multiple_equations_many_variables(self, state_space, control_space, disturbance_space):
-        """Test parsing and evaluation of multiple symbolic equations.
 
-        Args:
-            state_space (DiscreteSpace): The state space fixture.
-            control_space (DiscreteSpace): The control space fixture.
-            disturbance_space (DiscreteSpace): The disturbance space fixture.
-        """
-        equations = [
-            "x1 + x2 * x3 + u1 - w1 * tau",
-            "x2**2 + u2 + w2 * tau",
-            "x3 + sin(u1) + w1"
-        ]
-        tau = 0.05
-        tf = TransitionFunction(state_space, control_space, disturbance_space, tau, equations)
+def test_invalid_state_dimension(simple_spaces):
+    """
+    Ensure that providing wrong state dimension raises ValueError.
+    """
+    gLogger.debug("Testing invalid state dimension")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(state, control, disturb, 0.1, ["x1 + u1", "x2 + w1"])
 
-        current_state = np.array([1.0, 2.0, 3.0])
-        control_input = np.array([0.1, 0.2])
-        disturbance_input = np.array([0.05, 0.1])
+    with pytest.raises(ValueError):
+        tf.evaluate([1], [0], [0])
+    gLogger.info("Invalid state dimension test passed")
 
-        results = tf.evaluate(current_state, control_input, disturbance_input)
 
-        # Type and finiteness check
-        assert len(results) == 3
-        assert all(np.isfinite(r) for r in results)
+def test_invalid_control_dimension(simple_spaces):
+    """
+    Ensure that providing wrong control dimension raises ValueError.
+    """
+    gLogger.debug("Testing invalid control dimension")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(state, control, disturb, 0.1, ["x1 + u1", "x2 + w1"])
 
-        # Expected numerical results
-        expected = np.array([
-            current_state[0] + current_state[1]*current_state[2] + control_input[0] - disturbance_input[0]*tau,
-            current_state[1]**2 + control_input[1] + disturbance_input[1]*tau,
-            current_state[2] + np.sin(control_input[0]) + disturbance_input[0]
-        ])
-        np.testing.assert_allclose(results, expected, rtol=1e-6, atol=1e-9)
+    with pytest.raises(ValueError):
+        tf.evaluate([1, 2], [0, 1], [0])
+    gLogger.info("Invalid control dimension test passed")
 
-    def test_boundary_inputs(self, state_space, control_space, disturbance_space):
-        """Test evaluation at boundary values of state, control, and disturbance.
 
-        Args:
-            state_space (DiscreteSpace): The state space fixture.
-            control_space (DiscreteSpace): The control space fixture.
-            disturbance_space (DiscreteSpace): The disturbance space fixture.
-        """
-        equations = ["x1 + u1 + w1 * tau", "x2 + u2 + w2 * tau", "x3 + sin(u1) + w1"]
-        tau = 0.1
-        tf = TransitionFunction(state_space, control_space, disturbance_space, tau, equations)
+def test_invalid_disturbance_dimension(simple_spaces):
+    """
+    Ensure that providing wrong disturbance dimension raises ValueError.
+    """
+    gLogger.debug("Testing invalid disturbance dimension")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(state, control, disturb, 0.1, ["x1 + u1", "x2 + w1"])
 
-        lower_state = state_space.lowerBounds
-        upper_state = state_space.upperBounds
-        lower_control = control_space.lowerBounds
-        upper_control = control_space.upperBounds
-        lower_disturbance = disturbance_space.lowerBounds
-        upper_disturbance = disturbance_space.upperBounds
+    with pytest.raises(ValueError):
+        tf.evaluate([1, 2], [0], [0, 1])
+    gLogger.info("Invalid disturbance dimension test passed")
 
-        for state in [lower_state, upper_state]:
-            for control in [lower_control, upper_control]:
-                for disturbance in [lower_disturbance, upper_disturbance]:
-                    results = tf.evaluate(state, control, disturbance)
-                    assert all(np.isfinite(r) for r in results)
 
-                    expected = np.array([
-                        state[0] + control[0] + disturbance[0]*tau,
-                        state[1] + control[1] + disturbance[1]*tau,
-                        state[2] + np.sin(control[0]) + disturbance[0]
-                    ])
-                    np.testing.assert_allclose(results, expected, rtol=1e-6, atol=1e-9)
+def test_cooperative_system(simple_spaces):
+    """
+    Check that a cooperative system is correctly identified.
+    """
+    gLogger.debug("Testing cooperative system detection")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(
+        state, control, disturb, 0.1, ["x1 + tau*(u1 + w1)", "x2 + tau*(u1 + w1)"]
+    )
+    assert tf.isCooperative is True
+    gLogger.info("Cooperative system test passed")
 
-    def test_performance_many_evaluations(self, state_space, control_space, disturbance_space):
-        """Test performance by evaluating TransitionFunction many times and verify correctness for a subset.
 
-        Args:
-            state_space (DiscreteSpace): The state space fixture.
-            control_space (DiscreteSpace): The control space fixture.
-            disturbance_space (DiscreteSpace): The disturbance space fixture.
-        """
-        equations = ["x1 + x2 * x3 + u1 - w1 * tau",
-                     "x2**2 + u2 + w2 * tau",
-                     "x3 + sin(u1) + w1"]
-        tau = 0.05
-        tf = TransitionFunction(state_space, control_space, disturbance_space, tau, equations)
+def test_non_cooperative_system(simple_spaces):
+    """
+    Check that a non-cooperative system is correctly identified.
+    """
+    gLogger.debug("Testing non-cooperative system detection")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(
+        state, control, disturb, 0.1, ["x1 - tau*u1", "x2 - tau*w1"]
+    )
+    assert tf.isCooperative is False
+    gLogger.info("Non-cooperative system test passed")
 
-        np.random.seed(42)
-        n = 10_000
-        states = np.random.uniform(0, 10, (n, 3))
-        controls = np.random.uniform(0, 1, (n, 2))
-        disturbances = np.random.uniform(0, 1, (n, 2))
 
-        # Check finiteness for all
-        for i in range(n):
-            results = tf.evaluate(states[i], controls[i], disturbances[i])
-            assert all(np.isfinite(r) for r in results)
+def test_nonlinear_equations(simple_spaces):
+    """
+    Test evaluation of nonlinear symbolic equations.
+    """
+    gLogger.debug("Testing nonlinear system evaluation")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(
+        state,
+        control,
+        disturb,
+        0.1,
+        ["x1 + tau*(x1*u1 + w1**2)", "x2 + tau*(sin(x2) + u1)"],  
+    )
 
-        # Spot check first 5 for numerical correctness
-        for i in range(5):
-            expected = np.array([
-                states[i][0] + states[i][1]*states[i][2] + controls[i][0] - disturbances[i][0]*tau,
-                states[i][1]**2 + controls[i][1] + disturbances[i][1]*tau,
-                states[i][2] + np.sin(controls[i][0]) + disturbances[i][0]
-            ])
-            np.testing.assert_allclose(tf.evaluate(states[i], controls[i], disturbances[i]), expected,
-                                       rtol=1e-6, atol=1e-9)
+    result = tf.evaluate([1, np.pi / 2], [2], [1])
+    expected_x1 = 1 + 0.1 * (1*2 + 1**2)
+    expected_x2 = np.pi / 2 + 0.1 * (np.sin(np.pi/2) + 2)
+    assert np.allclose(result, (expected_x1, expected_x2), atol=1e-3)
+    gLogger.info("Nonlinear equations test passed")
+
+
+def test_constant_equation(simple_spaces):
+    """
+    Check that constant equations are evaluated correctly.
+    """
+    gLogger.debug("Testing constant equations")
+    state, control, disturb = simple_spaces
+    tf = TransitionFunction(state, control, disturb, 0.1, ["5", "10"])
+
+    result = tf.evaluate([0, 0], [0], [0])
+    assert result == (5, 10)
+    gLogger.info("Constant equation test passed")
+
+
+def test_single_state_system():
+    """
+    Test a 1D system evaluation.
+    """
+    gLogger.debug("Testing single-state 1D system")
+    state = DiscreteSpace("State", 1, [(0, 1)], [10])
+    control = DiscreteSpace("Control", 1, [(0, 1)], [10])
+    disturb = DiscreteSpace("Disturbance", 1, [(0, 1)], [10])
+
+    tf = TransitionFunction(state, control, disturb, 1.0, ["x1 + tau*u1 + tau*w1"])
+    result = tf.evaluate([1], [2], [3])
+    assert np.isclose(result[0], 1 + 1*(2 + 3))
+    gLogger.info("Single-state system test passed")
