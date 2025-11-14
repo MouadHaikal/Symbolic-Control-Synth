@@ -10,4 +10,5 @@ pybind11_add_module(bindings ${SRC_FILES})
 
 set_target_properties(bindings PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/symControl
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/symControl
 )
