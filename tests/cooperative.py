@@ -21,6 +21,9 @@ model = Model(
 )
 
 printer = CodePrinter(model)
+print("__")
+print(printer.printFAtPoint())
+print("__")
 automata = Automaton(
     stateSpace,
     controlSpace,
@@ -29,4 +32,3 @@ automata = Automaton(
 )
 
 print(model.transitionFunction.symbolContext)
-

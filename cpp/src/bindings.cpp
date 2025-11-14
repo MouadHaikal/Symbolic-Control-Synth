@@ -1,4 +1,4 @@
-#include "automaton.hpp"
+#include "automaton.cuh"
 #include "floodFill.hpp"
 
 

@@ -28,4 +28,4 @@ readme = "README.md"
 Repository = "https://github.com/MouadHaikal/Symbolic-Control-Synth"
 
 [tool.setuptools.packages.find]
-include = ["symControl", "cpp"]
+include = ["symControl", "cpp", "gui"]
