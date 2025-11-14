@@ -19,5 +19,6 @@ target_include_directories(ExternalModules
 # Set output directory to symControl package
 set_target_properties(ExternalModules PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/symControl
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/symControl
 )
 target_link_libraries(ExternalModules PRIVATE libindings)
