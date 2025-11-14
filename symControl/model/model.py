@@ -4,7 +4,7 @@ from symControl.space.discreteSpace import DiscreteSpace
 from symControl.model.transitionFunction import TransitionFunction
 from symControl.utils.validation import *
 from symControl.utils.constants import *
-from symControl.ExternalModules import floodFill
+from symControl.bindings import floodFill
 
 class Model:
     """
@@ -18,7 +18,6 @@ class Model:
         currentState (Cell): the current position in the stateSpace, 
                              by default it is mapped to the point with coordinates (0,...) as a start state during initalization.
         transitionFunction (TransitionFunction): the symbolic equations that govern the behavior of the model
-        
     """
 
     __slots__ = ['stateSpace', 'currentState', 'transitionFunction']
@@ -79,7 +78,7 @@ class Model:
             ValueError: If the targetSpace lies outside the stateSpace
         """
         validateRangeBounds(targetSpace.bounds, self.stateSpace.bounds)
-        
+
         # we get the corner of the space.
         lowerCorner = [targetSpace.bounds[dim][0] for dim in range(self.stateSpace.dimensions)]
         upperCorner = [targetSpace.bounds[dim][1] for dim in range(self.stateSpace.dimensions)]
@@ -90,5 +89,3 @@ class Model:
 
         cells = floodFill(lowerCorner, upperCorner)
         return {tuple(cell) for cell in cells}
-
-

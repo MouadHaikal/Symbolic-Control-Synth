@@ -1,6 +1,7 @@
-#include "model_bindings.hpp"
+#include "floodFill.hpp"
 #include <queue>
 #include <set>
+
 
 inline bool comparator(Point& point, Point& upperBound) {
     for(int i = 0; i < point.size(); i++) {
@@ -9,8 +10,7 @@ inline bool comparator(Point& point, Point& upperBound) {
     return true;
 }
 
-std::vector<Point> floodFill(Point &lowerBound, 
-                                        Point &upperBound) {
+std::vector<Point> floodFill(Point &lowerBound, Point &upperBound) {
     std::set<Point> availableCells;
     std::queue<Point> q;
     q.push(lowerBound);

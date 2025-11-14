@@ -1,3 +1,4 @@
+from math import exp
 import sympy as sp
 import numpy as np
 
@@ -23,9 +24,11 @@ class TransitionFunction:
         symbolBounds (dict): Bounds for each symbol variable in the system.
         equations (Tuple[sympy.Expr, ...]): Tuple of parsed transition equations.
         isCooperative (bool): Whether the system satisfies the cooperative property.
+        stateAbsJac (): TODO
+        disturbDiffUpper (): TODO
         _lambdaFunctions (List[callable]): List of lambda functions for evaluating equations numerically.
     """
-    __slots__ = ['symbolContext', 'timeStep', 'symbolBounds', 'dimensions', 'equations', 'isCooperative', '_lambdaFunctions']
+    __slots__ = ['symbolContext', 'timeStep', 'symbolBounds', 'dimensions', 'equations', 'isCooperative', 'stateAbsJac', 'disturbDiffUpper', '_lambdaFunctions']
 
     def __init__(self, 
                  stateSpace:       DiscreteSpace, 
@@ -63,9 +66,11 @@ class TransitionFunction:
             **{f"{DISTURBANCE}{i+1}": disturbanceSpace.bounds[i] for i in range(disturbanceSpace.dimensions)}
         }
 
+        # FIXME: need to substitute tau for its value
         self.equations = tuple(sp.parse_expr(eq, local_dict=self.symbolContext) for eq in equations)
+        self.equations = sp.Matrix([expr.subs({self.symbolContext[TAU]: self.timeStep}).simplify() for expr in self.equations])
 
-        self.isCooperative = self.__cooperativeCheck();
+        self.isCooperative, self.stateAbsJac, self.disturbDiffUpper = self.__cooperativeCheck();
 
         self._lambdaFunctions = [sp.lambdify(self.symbolContext.keys(), eq, modules="numpy") for eq in self.equations]
 
@@ -101,7 +106,7 @@ class TransitionFunction:
     # to be implemented
     # TODO: evaluate(self, state: ContinuousSpace, control: Sequence[float], distrubance: Sequence[float]) -> ContinuousSpace
 
-    def __cooperativeCheck(self) -> bool:
+    def __cooperativeCheck(self):
         """
         Checks whether the transition equations satisfy the cooperative system property.
 
@@ -113,7 +118,7 @@ class TransitionFunction:
         Returns:
             bool: True if the system is cooperative, False otherwise.
         """
-        jacX = sp.Matrix([
+        stateJac = sp.Matrix([
             [
                 sp.diff(eq, self.symbolContext[f"{STATE}{i+1}"]) 
                     for i in range(self.dimensions[STATE])
@@ -121,7 +126,7 @@ class TransitionFunction:
             for eq in self.equations
         ])
 
-        jacW = sp.Matrix([
+        disturbJac = sp.Matrix([
             [
                 sp.diff(eq, self.symbolContext[f"{DISTURBANCE}{i+1}"]) 
                     for i in range(self.dimensions[DISTURBANCE])
@@ -131,13 +136,11 @@ class TransitionFunction:
 
 
         def minVal(expr):
-            expr = expr.subs({self.symbolContext[TAU]: self.timeStep}).simplify()
-
             if expr.is_number:
                 return expr.evalf()
 
             vars = sorted(
-                [v for v in expr.free_symbols if v.name != TAU],
+                [v for v in expr.free_symbols],
                 key=lambda x: x.name
             )
 
@@ -153,15 +156,41 @@ class TransitionFunction:
 
             return result.fun
 
+        def maxVal(expr):
+            return minVal(-expr)
 
-        for i in range(jacX.rows):
-            for j in range(jacX.cols):
-                if minVal(jacX[i,j]) < 0.0:
-                    return False
 
-        for i in range(jacW.rows):
-            for j in range(jacW.cols):
-                if minVal(jacW[i,j]) < 0.0:
-                    return False
 
-        return True
+        isCooperative = (
+            all(minVal(stateJac[i, j]) >= 0.0 
+                for i in range(stateJac.rows) 
+                for j in range(stateJac.cols)
+            ) 
+        and 
+            all(minVal(disturbJac[i, j]) >= 0.0 
+                for i in range(disturbJac.rows) 
+                for j in range(disturbJac.cols)
+            )
+        )
+
+        if isCooperative:
+            return True, None, None
+
+
+        disturbDiffUpper = sp.Matrix([
+            [ 
+                maxVal(sp.Abs(disturbJac[i, j])) 
+                for j in range(disturbJac.cols)
+            ]
+            for i in range(disturbJac.rows)
+        ]);
+
+        stateAbsJac = sp.Matrix([
+            [ 
+                sp.Abs(stateJac[i, j])
+                for j in range(stateJac.cols)
+            ]
+            for i in range(stateJac.rows)
+        ]);
+
+        return isCooperative, stateAbsJac, disturbDiffUpper
