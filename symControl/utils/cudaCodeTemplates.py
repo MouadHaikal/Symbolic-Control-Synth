@@ -65,7 +65,7 @@ void buildAutomatonCoop(const SpaceInfoDevice   stateSpaceInfo,
         stateSpaceInfo.getCellBounds(stateIdx, cellLowerBound, cellUpperBound);
 
         float inputCellCenter[MAX_DIMENSIONS];
-        stateSpaceInfo.getCellCenter(inputIdx, inputCellCenter);
+        inputSpaceInfo.getCellCenter(inputIdx, inputCellCenter);
 
 
         float targetLowerBound[MAX_DIMENSIONS];
@@ -79,7 +79,6 @@ void buildAutomatonCoop(const SpaceInfoDevice   stateSpaceInfo,
 
         stateSpaceInfo.getCellCoords(targetLowerBound, targetLowerBoundCoords);
         stateSpaceInfo.getCellCoords(targetUpperBound, targetUpperBoundCoords);
-
 
         floodFill(targetLowerBoundCoords, 
                   targetUpperBoundCoords, 
