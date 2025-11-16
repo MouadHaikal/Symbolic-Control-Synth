@@ -1,0 +1,2 @@
+#define MAX_DIMENSIONS 3
+#define MAX_TRANSITIONS 30

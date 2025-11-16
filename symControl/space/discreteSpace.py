@@ -2,7 +2,7 @@ from .continuousSpace import ContinuousSpace
 from .cell import Cell
 from symControl.utils.validation import *
 
-from math import floor
+from math import floor, prod
 
 
 class DiscreteSpace(ContinuousSpace):
@@ -18,8 +18,8 @@ class DiscreteSpace(ContinuousSpace):
     """
     __slots__ = ['__resolutions', '__cellSize']
 
-    def __init__(self, name : str, dimensions: int, bounds: Sequence[Tuple[float, float]], resolutions: Sequence[int]):
-        super().__init__(name, dimensions, bounds)
+    def __init__(self, dimensions: int, bounds: Sequence[Tuple[float, float]], resolutions: Sequence[int]):
+        super().__init__(dimensions, bounds)
         validateDimensions(resolutions, dimensions)
 
         self.__resolutions = tuple(resolutions)
@@ -95,3 +95,15 @@ class DiscreteSpace(ContinuousSpace):
             Tuple[float,...]: self.__cellSize
         """
         return self.__cellSize;
+
+    @property
+    def resolutions(self):
+        return self.__resolutions
+
+    @property
+    def cellSize(self):
+        return self.__cellSize
+
+    @property 
+    def cellCount(self):
+        return prod(self.__resolutions)

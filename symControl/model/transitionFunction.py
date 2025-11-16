@@ -1,9 +1,9 @@
-from math import exp
 import sympy as sp
 import numpy as np
 
 from scipy.optimize import minimize
 
+from symControl.space.continuousSpace import ContinuousSpace
 from symControl.space.discreteSpace import DiscreteSpace
 from symControl.utils.validation import *
 from symControl.utils.constants import *
@@ -33,7 +33,7 @@ class TransitionFunction:
     def __init__(self, 
                  stateSpace:       DiscreteSpace, 
                  controlSpace:     DiscreteSpace, 
-                 disturbanceSpace: DiscreteSpace,
+                 disturbanceSpace: ContinuousSpace,
                  timeStep:         float,
                  equations:        Sequence[str]
     ):

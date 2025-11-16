@@ -1,9 +1,9 @@
-from symControl import model, utils
 from symControl.utils.constants import *
 from symControl.utils.cudaCodeTemplates import *
 from symControl.model.model import Model
 from sympy.printing.c import C11CodePrinter
 import sympy as sp
+
 
 class CodePrinter(C11CodePrinter):
     __slots__ = ['model']
@@ -29,8 +29,8 @@ class CodePrinter(C11CodePrinter):
         return super()._print_Symbol(expr)
 
 
-    def printFAtPoint(self):
+    def printCodeCooperative(self):
         nextState = sp.MatrixSymbol("nextState", self.model.stateSpace.dimensions, 1)
-        return codeTemplate_f_at_Point.format(
+        return codeTemplateCoop.format(
             code=self.doprint(self.model.transitionFunction.equations, assign_to=nextState)
         )

@@ -1,34 +1,35 @@
 from symControl.space.discreteSpace import DiscreteSpace
+from symControl.space.continuousSpace import ContinuousSpace
 from symControl.model.model import Model
 from symControl.model.codePrinter import CodePrinter
 from symControl.bindings import Automaton
 
 
-stateSpace       = DiscreteSpace("State", 2, [(0, 1), (0, 1)], [10, 10])
-controlSpace     = DiscreteSpace("Control", 1, [(-1, 1)], [10])
-disturbanceSpace = DiscreteSpace("Disturbance", 2, [(-0.1, 0.1), (-0.1, 0.1)], [10, 10])
+stateSpace       = DiscreteSpace(2, [(0, 1), (0, 1)], [4, 4])
+inputSpace       = DiscreteSpace(2, [(-1, 1), (-1, 1)], [2, 2])
+disturbanceSpace = ContinuousSpace(1, [(-0.1, 0.1)])
 
 
 model = Model(
     stateSpace=stateSpace,            
-    controlSpace=controlSpace,        
+    controlSpace=inputSpace,        
     disturbanceSpace=disturbanceSpace,
     timeStep=0.1,
     equations=[
         "x1 + tau * (u1 + w1)",
-        "x2 + tau * (u1 + w2)"
+        "x2 + tau * (u2 + w1)", 
     ]
 )
 
 printer = CodePrinter(model)
 print("__")
-print(printer.printFAtPoint())
+print(printer.printCodeCooperative())
 print("__")
-automata = Automaton(
+automaton = Automaton(
     stateSpace,
-    controlSpace,
+    inputSpace,
     disturbanceSpace,
-    printer.printFAtPoint()
+    printer.printCodeCooperative()
 )
 
 print(model.transitionFunction.symbolContext)

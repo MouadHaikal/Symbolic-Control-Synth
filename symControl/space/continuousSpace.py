@@ -9,16 +9,14 @@ class ContinuousSpace:
     all lower bounds are less than or equal to the corresponding upper bounds.
 
     Attributes:
-        name (str): The name identifier for the space.
         dimensions (int): The number of dimensions in the space.
         bounds (Tuple[Tuple[float, float], ...]): A list of 2-sized tuples, each specifying (lower, upper) bounds for a dimension.
     """
-    __slots__ = ['name', 'dimensions', 'bounds']
+    __slots__ = ['dimensions', 'bounds']
 
-    def __init__(self, name: str, dimensions: int, bounds: Sequence[Tuple[float, float]]):
+    def __init__(self, dimensions: int, bounds: Sequence[Tuple[float, float]]):
         validateDimensions(bounds, dimensions)
         validateBounds(bounds)
 
-        self.name       = name
         self.dimensions = dimensions
         self.bounds     = tuple(bounds)

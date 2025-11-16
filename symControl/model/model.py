@@ -25,7 +25,7 @@ class Model:
     def __init__(self,
                  stateSpace: DiscreteSpace,
                  controlSpace: DiscreteSpace,
-                 disturbanceSpace: DiscreteSpace,
+                 disturbanceSpace: ContinuousSpace,
                  timeStep: float,
                  equations: Sequence[str]
     ):
