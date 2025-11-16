@@ -191,7 +191,6 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     };
 
 
-    // table is already present above
     // defining args;
     void *args[] = {
         &stateSpaceInfoDevice,

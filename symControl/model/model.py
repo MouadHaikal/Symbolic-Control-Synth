@@ -4,7 +4,6 @@ from symControl.space.discreteSpace import DiscreteSpace
 from symControl.model.transitionFunction import TransitionFunction
 from symControl.utils.validation import *
 from symControl.utils.constants import *
-from symControl.bindings import floodFill
 
 class Model:
     """
@@ -58,34 +57,3 @@ class Model:
 
         cellCoords = self.stateSpace.getCellCoords(coords)
         self.currentState = self.stateSpace.getCell(cellCoords)
-
-
-    def getNextStates(self, targetSpace: ContinuousSpace) -> Set[Tuple[int,...]]:
-        """
-        Returns the set of states the model can reach to get to its target.
-
-        This functions should be called after calling evaluating the codomaine of the some control and disturbance in order to get the valid states the model can reach.
-
-        Takes as input the target space and returns a set of coordinates
-
-        Args:
-            targetSpace (ContinuousSpace): Where the model wants to go.
-
-        Returns:
-            Set[Tuple[int,...]]: The set of states that intersects with the target space
-
-        Raises:
-            ValueError: If the targetSpace lies outside the stateSpace
-        """
-        validateRangeBounds(targetSpace.bounds, self.stateSpace.bounds)
-
-        # we get the corner of the space.
-        lowerCorner = [targetSpace.bounds[dim][0] for dim in range(self.stateSpace.dimensions)]
-        upperCorner = [targetSpace.bounds[dim][1] for dim in range(self.stateSpace.dimensions)]
-
-        # transform them to cells
-        lowerCorner = self.stateSpace.getCellCoords(lowerCorner)
-        upperCorner = self.stateSpace.getCellCoords(upperCorner)
-
-        cells = floodFill(lowerCorner, upperCorner)
-        return {tuple(cell) for cell in cells}
