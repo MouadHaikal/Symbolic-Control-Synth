@@ -1,5 +1,12 @@
 __includesCodesTemplate="""\
     #include <utilsDevice.hpp>
+    __device__ void acquireLock(int* lock) {{
+        while (atomicCAS(lock, 0, 1) != 0);
+    }}
+
+    __device__ void releaseLock(int* lock) {{
+        atomicExch(lock, 0);
+    }}
 """
 
 __fAtPointCodeTemplate="""\
@@ -46,7 +53,34 @@ __floodFillCodeTemplate="""\
     }}
 """
 
+__storeOutputCodeTemplate="""\
+    __device__ __forceinline__
+    void storeOutput(int                   stateIdx,
+                     int                   inputIdx,
+                     TransitionTableDevice table) {{
+        //printf("storing reverse output");
 
+        // &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
+
+        // we now set the other way around with the reverse array
+        for(int i = 0; i < MAX_TRANSITIONS; i++) {{
+            int directOffset = table.getOffset(stateIdx, inputIdx, i);        
+
+            int predecessor = table.dData[directOffset];
+            if(predecessor == -1) break;
+
+            int reverseOffset = table.getRevOffset(predecessor, inputIdx);
+            int lockOffset = predecessor * table.inputCount + inputIdx;
+
+            acquireLock(&table.dTransitionLocks[lockOffset]);
+            while(table.dRevData[reverseOffset] != -1) reverseOffset++;
+            table.dRevData[reverseOffset] = stateIdx;
+            releaseLock(&table.dTransitionLocks[lockOffset]);
+
+        }}
+
+    }}
+"""
 
 coopCodeTemplate="""\
     """ + __includesCodesTemplate + """
@@ -55,6 +89,7 @@ coopCodeTemplate="""\
 
     """ + __floodFillCodeTemplate + """
 
+    """ + __storeOutputCodeTemplate + """
 
     extern "C" __global__ 
     void buildAutomatonCoop(const SpaceInfoDevice   stateSpaceInfo,
@@ -98,6 +133,8 @@ coopCodeTemplate="""\
                       stateSpaceInfo.dimensions, 
                       &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
             );
+
+            storeOutput(stateIdx, inputIdx, table);
         }}
     }}\
 """

@@ -57,6 +57,8 @@ struct SpaceInfoHost{
 
 struct TransitionTableHost{
     int*         dData;
+    int*         dRevData;
+    int*         dTransitionLocks;
     const size_t stateCount;
     const size_t inputCount;
 
@@ -64,11 +66,21 @@ struct TransitionTableHost{
     TransitionTableHost(size_t stateCount, size_t inputCount) 
         : stateCount(stateCount), inputCount(inputCount) 
     {
+
         size_t size = stateCount * inputCount * MAX_TRANSITIONS * sizeof(int);
         cudaMalloc(&dData, size);
+        cudaMemset(dData, EMPTY_CELL, size);
+
+        size_t sizeRev = stateCount * inputCount * MAX_PREDECESSORS * sizeof(int);
+        cudaMalloc(&dRevData, sizeRev);
+        cudaMemset(dRevData, EMPTY_CELL, sizeRev);
+
+        cudaMalloc(&dTransitionLocks, stateCount * inputCount * sizeof(int));
+        cudaMemset(dTransitionLocks, 0, stateCount * inputCount * sizeof(int));
     }
     
     ~TransitionTableHost() {
         cudaFree(dData);
+        cudaFree(dRevData);
     }
 };

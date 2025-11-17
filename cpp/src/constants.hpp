@@ -1,2 +1,4 @@
 #define MAX_DIMENSIONS 3
 #define MAX_TRANSITIONS 30
+#define MAX_PREDECESSORS 30
+#define EMPTY_CELL -1

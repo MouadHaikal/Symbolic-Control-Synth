@@ -66,6 +66,8 @@ struct SpaceInfoDevice{
 
 struct TransitionTableDevice{
     int*         dData;
+    int*         dRevData;
+    int*         dTransitionLocks;
     const size_t stateCount;
     const size_t inputCount;
     
@@ -76,15 +78,27 @@ struct TransitionTableDevice{
                inputIdx * MAX_TRANSITIONS + 
                transition;
     }
-    
+    __device__ __forceinline__ 
+    int getRevOffset(int stateIdx, int inputIdx, int predecessor = 0) const {
+        return stateIdx * (inputCount * MAX_PREDECESSORS) + 
+               inputIdx * MAX_PREDECESSORS + 
+               predecessor;
+    }
     __device__ __forceinline__ 
     void set(int stateIdx, int inputIdx, int transition, int val) {
         dData[getOffset(stateIdx, inputIdx, transition)] = val;
     }
-    
+    __device__ __forceinline__ 
+    void setRev(int stateIdx, int inputIdx, int predecessor, int val) {
+        dRevData[getRevOffset(stateIdx, inputIdx, predecessor)] = val;
+    }
     __device__ __forceinline__ 
     int get(int stateIdx, int inputIdx, int transition) const {
         return dData[getOffset(stateIdx, inputIdx, transition)];
+    }
+    __device__ __forceinline__ 
+    int getRev(int stateIdx, int inputIdx, int predecessor) const {
+        return dRevData[getRevOffset(stateIdx, inputIdx, predecessor)];
     }
 };
 
