@@ -20,9 +20,10 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     : table(stateSpace.attr("cellCount").cast<size_t>(), inputSpace.attr("cellCount").cast<size_t>())
 { 
     if (stateSpace.attr("dimensions").cast<int>() > MAX_DIMENSIONS) {
-        printf("Error: State space dimensions (%d) > MAX_DIMENSIONS (%d) (at cpp/src/constants.hpp)\n", 
+        printf("Error: State space dimensions (%d) > MAX_DIMENSIONS (%d) (at %s)\n", 
                stateSpace.attr("dimensions").cast<int>(), 
-               MAX_DIMENSIONS
+               MAX_DIMENSIONS,
+               __FILE__
         );
 
         exit(EXIT_FAILURE);
@@ -224,24 +225,24 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
 
     // =============== Testing ===============
-    int stateCount = 10;
-    int inputCount = inputSpaceInfoHost.cellCount;
-    int hTableData[stateCount * inputCount * MAX_TRANSITIONS];
-    cudaMemcpy(hTableData, table.dData, stateCount * inputCount * MAX_TRANSITIONS * sizeof(int), cudaMemcpyDeviceToHost);
-
-    for (int s = 0; s < stateCount; s++) {
-        for (int u = 0; u < inputCount; u++) {
-            printf("=== state %d, input %d ===\n", s, u);
-
-            int base = (s * inputCount + u) * MAX_TRANSITIONS;
-
-            for (int t = 0; t < MAX_TRANSITIONS; t++) {
-                printf("%d ", hTableData[base + t]);
-            }
-
-            printf("\n--------------------\n");
-        }
-    }
+    // int stateCount = 10;
+    // int inputCount = inputSpaceInfoHost.cellCount;
+    // int hTableData[stateCount * inputCount * MAX_TRANSITIONS];
+    // cudaMemcpy(hTableData, table.dData, stateCount * inputCount * MAX_TRANSITIONS * sizeof(int), cudaMemcpyDeviceToHost);
+    //
+    // for (int s = 0; s < stateCount; s++) {
+    //     for (int u = 0; u < inputCount; u++) {
+    //         printf("=== state %d, input %d ===\n", s, u);
+    //
+    //         int base = (s * inputCount + u) * MAX_TRANSITIONS;
+    //
+    //         for (int t = 0; t < MAX_TRANSITIONS; t++) {
+    //             printf("%d ", hTableData[base + t]);
+    //         }
+    //
+    //         printf("\n--------------------\n");
+    //     }
+    // }
 }
 
 Automaton::~Automaton() {

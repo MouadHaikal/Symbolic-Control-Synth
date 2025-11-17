@@ -21,15 +21,20 @@ model = Model(
     ]
 )
 
+if model.transitionFunction.isCooperative:
+    print("====================== COOPERATIVE =====================")
+else:
+    print("====================== NON COOPERATIVE =====================")
+
 printer = CodePrinter(model)
-print("__")
-print(printer.printCodeCooperative())
-print("__")
+# print("__")
+# print(printer.printCode())
+# print("__")
 automaton = Automaton(
     stateSpace,
     inputSpace,
     disturbanceSpace,
-    printer.printCodeCooperative()
+    printer.printCode()
 )
 
-print(model.transitionFunction.symbolContext)
+# print(model.transitionFunction.symbolContext)

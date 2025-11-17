@@ -1,4 +1,3 @@
-from typing import Set
 from symControl.space.continuousSpace import ContinuousSpace
 from symControl.space.discreteSpace import DiscreteSpace
 from symControl.model.transitionFunction import TransitionFunction

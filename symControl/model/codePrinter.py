@@ -29,8 +29,15 @@ class CodePrinter(C11CodePrinter):
         return super()._print_Symbol(expr)
 
 
-    def printCodeCooperative(self):
+    def printCode(self):
         nextState = sp.MatrixSymbol("nextState", self.model.stateSpace.dimensions, 1)
-        return codeTemplateCoop.format(
-            code=self.doprint(self.model.transitionFunction.equations, assign_to=nextState)
-        )
+
+        if self.model.transitionFunction.isCooperative:
+            return coopCodeTemplate.format(
+                fAtPointCode=self.doprint(self.model.transitionFunction.equations, assign_to=nextState)
+            )
+
+        else:
+            return NonCoopCodeTemplate.format(
+                fAtPointCode=self.doprint(self.model.transitionFunction.equations, assign_to=nextState)
+            )
