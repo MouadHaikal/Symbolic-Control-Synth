@@ -16,8 +16,8 @@ model = Model(
     disturbanceSpace=disturbanceSpace,
     timeStep=0.1,
     equations=[
-        "x1 + tau * (u1 + w1)",
-        "x2 + tau * (u2 + w1)", 
+        "(x1**3)/3 + tau * (u1**2 + w1)",
+        "sin(x2) + tau * (u2 + w1**2)", 
     ]
 )
 
@@ -26,15 +26,16 @@ if model.transitionFunction.isCooperative:
 else:
     print("====================== NON COOPERATIVE =====================")
 
+print(model.transitionFunction.equations)
 printer = CodePrinter(model)
 # print("__")
-# print(printer.printCode())
+print(printer.printCode())
 # print("__")
-automaton = Automaton(
-    stateSpace,
-    inputSpace,
-    disturbanceSpace,
-    printer.printCode()
-)
+# automaton = Automaton(
+#     stateSpace,
+#     inputSpace,
+#     disturbanceSpace,
+#     printer.printCode()
+# )
 
 # print(model.transitionFunction.symbolContext)
