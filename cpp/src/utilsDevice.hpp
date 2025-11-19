@@ -6,6 +6,7 @@ struct SpaceBoundsDevice{
     int    dimensions;
     float* dLowerBound;
     float* dUpperBound;
+    float* dCenter;
 };
 
 struct SpaceInfoDevice{

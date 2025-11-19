@@ -1,4 +1,6 @@
 #include "utilsDevice.hpp"
+#include <cuda_runtime.h>
+#include <cuda_runtime_api.h>
 
 
 
@@ -6,20 +8,24 @@ struct SpaceBoundsHost{
     int    dimensions;
     float* dLowerBound;
     float* dUpperBound;
+    float* dCenter;
 
-    SpaceBoundsHost(int dimensions, float* hLowerBound, float* hUpperBound)
+    SpaceBoundsHost(int dimensions, float* hLowerBound, float* hUpperBound, float* hCenter)
         : dimensions(dimensions) 
     {
         cudaMalloc(&dLowerBound, dimensions * sizeof(float));
         cudaMalloc(&dUpperBound, dimensions * sizeof(float));
+        cudaMalloc(&dCenter, dimensions * sizeof(float));
 
         cudaMemcpy(dLowerBound, hLowerBound, dimensions * sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(dUpperBound, hUpperBound, dimensions * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(dCenter, hCenter, dimensions * sizeof(float), cudaMemcpyHostToDevice);
     }
 
     ~SpaceBoundsHost() {
         cudaFree(dLowerBound);
         cudaFree(dUpperBound);
+        cudaFree(dCenter);
     }
 };
 
@@ -66,7 +72,6 @@ struct TransitionTableHost{
     TransitionTableHost(size_t stateCount, size_t inputCount) 
         : stateCount(stateCount), inputCount(inputCount) 
     {
-
         size_t size = stateCount * inputCount * MAX_TRANSITIONS * sizeof(int);
         cudaMalloc(&dData, size);
         cudaMemset(dData, EMPTY_CELL, size);

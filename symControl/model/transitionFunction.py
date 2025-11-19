@@ -24,11 +24,11 @@ class TransitionFunction:
         symbolBounds (dict): Bounds for each symbol variable in the system.
         equations (Tuple[sympy.Expr, ...]): Tuple of parsed transition equations.
         isCooperative (bool): Whether the system satisfies the cooperative property.
-        stateAbsJac (): TODO
-        disturbDiffUpper (): TODO
+        stateJac (): TODO
+        disturbJacUpper (): TODO
         _lambdaFunctions (List[callable]): List of lambda functions for evaluating equations numerically.
     """
-    __slots__ = ['symbolContext', 'timeStep', 'symbolBounds', 'dimensions', 'equations', 'isCooperative', 'stateAbsJac', 'disturbDiffUpper', '_lambdaFunctions']
+    __slots__ = ['symbolContext', 'timeStep', 'symbolBounds', 'dimensions', 'equations', 'isCooperative', 'stateJac', 'stateJacGrad', 'disturbJacUpper', '_lambdaFunctions']
 
     def __init__(self, 
                  stateSpace:       DiscreteSpace, 
@@ -43,7 +43,7 @@ class TransitionFunction:
             **{f"{STATE}{i+1}": sp.Symbol(f"{STATE}{i+1}") 
                 for i in range(stateSpace.dimensions)},
 
-            **{f"{CONTROL}{i+1}": sp.Symbol(f"{CONTROL}{i+1}") 
+            **{f"{INPUT}{i+1}": sp.Symbol(f"{INPUT}{i+1}") 
                 for i in range(controlSpace.dimensions)},
 
             **{f"{DISTURBANCE}{i+1}": sp.Symbol(f"{DISTURBANCE}{i+1}") 
@@ -56,21 +56,20 @@ class TransitionFunction:
 
         self.dimensions = {
             STATE: stateSpace.dimensions,
-            CONTROL: controlSpace.dimensions,
+            INPUT: controlSpace.dimensions,
             DISTURBANCE: disturbanceSpace.dimensions,
         }
 
         self.symbolBounds = {
             **{f"{STATE}{i+1}": stateSpace.bounds[i] for i in range(stateSpace.dimensions)},
-            **{f"{CONTROL}{i+1}": controlSpace.bounds[i] for i in range(controlSpace.dimensions)},
+            **{f"{INPUT}{i+1}": controlSpace.bounds[i] for i in range(controlSpace.dimensions)},
             **{f"{DISTURBANCE}{i+1}": disturbanceSpace.bounds[i] for i in range(disturbanceSpace.dimensions)}
         }
 
-        # FIXME: need to substitute tau for its value
         self.equations = tuple(sp.parse_expr(eq, local_dict=self.symbolContext) for eq in equations)
         self.equations = sp.Matrix([expr.subs({self.symbolContext[TAU]: self.timeStep}).simplify() for expr in self.equations])
 
-        self.isCooperative, self.stateAbsJac, self.disturbDiffUpper = self.__cooperativeCheck();
+        self.isCooperative, self.stateJac, self.stateJacGrad, self.disturbJacUpper = self.__cooperativeCheck();
 
         self._lambdaFunctions = [sp.lambdify(self.symbolContext.keys(), eq, modules="numpy") for eq in self.equations]
 
@@ -94,7 +93,7 @@ class TransitionFunction:
             ValueError: If the state, control, or disturbance vectors do not have the expected dimensions.
         """
         validateDimensions(state, self.dimensions[STATE])
-        validateDimensions(control, self.dimensions[CONTROL])
+        validateDimensions(control, self.dimensions[INPUT])
         validateDimensions(disturbance, self.dimensions[DISTURBANCE])
 
         inputContext = np.concatenate((state, control, disturbance))
@@ -120,7 +119,7 @@ class TransitionFunction:
         """
         stateJac = sp.Matrix([
             [
-                sp.diff(eq, self.symbolContext[f"{STATE}{i+1}"]) 
+                sp.diff(eq, self.symbolContext[f"{STATE}{i+1}"])
                     for i in range(self.dimensions[STATE])
             ] 
             for eq in self.equations
@@ -157,40 +156,61 @@ class TransitionFunction:
             return result.fun
 
         def maxVal(expr):
-            return minVal(-expr)
+            return -minVal(-expr)
 
 
 
         isCooperative = (
-            all(minVal(stateJac[i, j]) >= 0.0 
+            all(minVal(stateJac[i,j]) >= 0.0 
                 for i in range(stateJac.rows) 
                 for j in range(stateJac.cols)
             ) 
         and 
-            all(minVal(disturbJac[i, j]) >= 0.0 
+            all(minVal(disturbJac[i,j]) >= 0.0 
                 for i in range(disturbJac.rows) 
                 for j in range(disturbJac.cols)
             )
         )
 
         if isCooperative:
-            return True, None, None
+            return True, None, None, None
 
 
-        disturbDiffUpper = sp.Matrix([
+        disturbJacUpper = sp.Matrix([
             [ 
-                maxVal(sp.Abs(disturbJac[i, j])) 
+                maxVal(sp.Abs(disturbJac[i,j])) 
                 for j in range(disturbJac.cols)
             ]
             for i in range(disturbJac.rows)
-        ]);
+        ])
 
-        stateAbsJac = sp.Matrix([
-            [ 
-                sp.Abs(stateJac[i, j])
-                for j in range(stateJac.cols)
-            ]
-            for i in range(stateJac.rows)
-        ]);
 
-        return isCooperative, stateAbsJac, disturbDiffUpper
+        stateJacGrad = tuple(
+            tuple(
+                {
+                    STATE: tuple(sp.diff(stateJac[i,j], self.symbolContext[f"{STATE}{k+1}"]) 
+                        for k in range(self.dimensions[STATE])
+                    ),
+
+                    INPUT: tuple(sp.diff(stateJac[i,j], self.symbolContext[f"{INPUT}{k+1}"])
+                        for k in range(self.dimensions[INPUT])      
+                    ),
+
+                    DISTURBANCE: tuple(sp.diff(stateJac[i,j], self.symbolContext[f"{DISTURBANCE}{k+1}"])
+                        for k in range(self.dimensions[DISTURBANCE])
+                    )
+                } for j in range(stateJac.cols)
+            ) for i in range(stateJac.rows)
+        )
+
+        print("stateJac:")
+        print(stateJac)
+        print("disturbJac:")
+        print(disturbJac)
+        print("disturbJacUpper:")
+        print(disturbJacUpper)
+        print("stateJacGrad:")
+        print(stateJacGrad)
+
+
+        return isCooperative, stateJac, stateJacGrad, disturbJacUpper

@@ -22,6 +22,7 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
                      const char* buildAutomatonCoopCode)
     : table(stateSpace.attr("cellCount").cast<size_t>(), inputSpace.attr("cellCount").cast<size_t>())
 { 
+    // py::scoped_interpreter guard{};
     if (stateSpace.attr("dimensions").cast<int>() > MAX_DIMENSIONS) {
         printf("Error: State space dimensions (%d) > MAX_DIMENSIONS (%d) (at %s)\n", 
                stateSpace.attr("dimensions").cast<int>(), 
@@ -170,23 +171,29 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     int disturbanceDimensions = disturbanceSpace.attr("dimensions").cast<int>();
     float disturbanceLowerBound[disturbanceDimensions];
     float disturbanceUpperBound[disturbanceDimensions];
+    float disturbanceCenter[disturbanceDimensions];
     {
         py::tuple pyDisturbanceBounds = disturbanceSpace.attr("bounds").cast<py::tuple>();
         for(int i = 0; i < disturbanceDimensions; i++) {
             py::tuple inner = pyDisturbanceBounds[i].cast<py::tuple>();
-            disturbanceLowerBound[i] = inner[0].cast<float>();
-            disturbanceUpperBound[i] = inner[1].cast<float>();
+            float lower = inner[0].cast<float>();
+            float upper = inner[1].cast<float>();
+            disturbanceLowerBound[i] = lower;
+            disturbanceUpperBound[i] = upper;
+            disturbanceCenter[i] = (lower + upper) / 2.0;
         }
     }
     SpaceBoundsHost disturbanceSpaceBoundsHost {
         disturbanceDimensions,
         disturbanceLowerBound,
         disturbanceUpperBound,
+        disturbanceCenter
     };
     SpaceBoundsDevice disturbanceSpaceBoundsDevice {
         disturbanceSpaceBoundsHost.dimensions,
         disturbanceSpaceBoundsHost.dLowerBound,
-        disturbanceSpaceBoundsHost.dUpperBound
+        disturbanceSpaceBoundsHost.dUpperBound,
+        disturbanceSpaceBoundsHost.dCenter
     };
 
 
@@ -206,7 +213,6 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
         &disturbanceSpaceBoundsDevice,
         &tableDevice
     };
-
 
     cuLaunchKernel(buildAutomatonCoop,
                    (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,

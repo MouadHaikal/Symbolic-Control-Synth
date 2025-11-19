@@ -1,4 +1,4 @@
 STATE       = "x"
-CONTROL     = "u"
+INPUT       = "u"
 DISTURBANCE = "w"
 TAU         = "tau"
