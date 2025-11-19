@@ -19,7 +19,11 @@ public:
 
     ~Automaton();
 
+
+    void resolveSecuritySpec(bool* processed, int* hData, int* hRevData, int* roots, int size);
+
 private:
     
     TransitionTableHost table;    
+    void preProcessSecuritySpec(int* hData, int* hRevData, int* roots, int size);
 };

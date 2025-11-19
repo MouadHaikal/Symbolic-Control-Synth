@@ -83,4 +83,27 @@ struct TransitionTableHost{
         cudaFree(dData);
         cudaFree(dRevData);
     }
+
+    int getOffset(int stateIdx, int inputIdx, int transition = 0) const {
+        return stateIdx * (inputCount * MAX_TRANSITIONS) + 
+               inputIdx * MAX_TRANSITIONS + 
+               transition;
+    }
+    int getRevOffset(int stateIdx, int inputIdx, int predecessor = 0) const {
+        return stateIdx * (inputCount * MAX_PREDECESSORS) + 
+               inputIdx * MAX_PREDECESSORS + 
+               predecessor;
+    }
+    void set(int stateIdx, int inputIdx, int transition, int val) {
+        dData[getOffset(stateIdx, inputIdx, transition)] = val;
+    }
+    void setRev(int stateIdx, int inputIdx, int predecessor, int val) {
+        dRevData[getRevOffset(stateIdx, inputIdx, predecessor)] = val;
+    }
+    int get(int stateIdx, int inputIdx, int transition) const {
+        return dData[getOffset(stateIdx, inputIdx, transition)];
+    }
+    int getRev(int stateIdx, int inputIdx, int predecessor) const {
+        return dRevData[getRevOffset(stateIdx, inputIdx, predecessor)];
+    }
 };
