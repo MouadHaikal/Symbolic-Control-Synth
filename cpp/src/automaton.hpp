@@ -13,13 +13,14 @@ class Automaton{
 public:
     Automaton(py::object stateSpace,        // DiscreteSpace  
               py::object inputSpace,        // DiscreteSpace
-              py::object disturbanceSpace,  // ContinuousSpac
-              const char* fAtPointCode);
+              py::object disturbanceSpace,  // ContinuousSpace
+              bool isCooperative,
+              py::tuple maxDisturbJac,
+              const char* buildAutomatonCode);
 
 
     ~Automaton();
 
 private:
-    
     TransitionTableHost table;    
 };

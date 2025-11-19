@@ -1,8 +1,10 @@
 #include "automaton.hpp"
 #include <cstdio>
 #include <cstdlib>
+#include <cuda.h>
 #include <nvrtc.h>
 #include <cstddef>
+#include <iostream>
 
 #define BLOCK_SIZE 512
 
@@ -16,7 +18,9 @@
 Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
                      py::object inputSpace,       // DiscreteSpace
                      py::object disturbanceSpace, // ContinuousSpace
-                     const char* buildAutomatonCoopCode)
+                     bool isCooperative,
+                     py::tuple maxDisturbJac,
+                     const char* buildAutomatonCode)
     : table(stateSpace.attr("cellCount").cast<size_t>(), inputSpace.attr("cellCount").cast<size_t>())
 { 
     // py::scoped_interpreter guard{};
@@ -34,8 +38,8 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     // =============== Compile Program ===============
     nvrtcProgram prog;
     nvrtcCreateProgram(&prog,
-                       buildAutomatonCoopCode,
-                       "buildAutomatonCoop.cu",
+                       buildAutomatonCode,
+                       "buildAutomaton.cu",
                        0,
                        NULL,
                        NULL);
@@ -47,15 +51,25 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     std::vector<const char*> opt_cstr;
     for(auto& s : options) opt_cstr.push_back(s.c_str());
 
-    nvrtcCompileProgram(prog, opt_cstr.size(), opt_cstr.data());
+    nvrtcResult compileResult = nvrtcCompileProgram(prog, opt_cstr.size(), opt_cstr.data());
 
 
 
     // =============== Get Compilation Log ===============
-    size_t logSize;
-    nvrtcGetProgramLogSize(prog, &logSize);
-    char *log = new char[logSize];
-    nvrtcGetProgramLog(prog, log);
+    if (compileResult != NVRTC_SUCCESS) {
+        size_t logSize;
+        nvrtcGetProgramLogSize(prog, &logSize);
+        if (logSize > 1) {
+            char *log = new char[logSize];
+            nvrtcGetProgramLog(prog, log);
+            std::cerr << "Compilation failed:\n" << log << std::endl;
+            delete[] log;
+        } else {
+            std::cerr << "Compilation failed but log is empty." << std::endl;
+        }
+    } else {
+        std::cout << "Compilation succeeded." << std::endl;
+    }
 
     // Get PTX from the program.
     size_t ptxSize;
@@ -68,13 +82,16 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     CUdevice cuDevice;
     CUcontext context;
     CUmodule module;
-    CUfunction buildAutomatonCoop;
+    CUfunction buildAutomaton;
 
     cuInit(0);
     cuDeviceGet(&cuDevice, 0);
     cuCtxCreate(&context, NULL, 0, cuDevice);
     cuModuleLoadDataEx(&module, ptx, 0, 0, 0);
-    cuModuleGetFunction(&buildAutomatonCoop, module, "buildAutomatonCoop");
+    cuModuleGetFunction(&buildAutomaton, 
+                        module, 
+                        (isCooperative ? "buildAutomatonCoop": "buildAutomatonNonCoop")
+    );
 
 
 
@@ -200,21 +217,65 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     };
 
 
-    // defining args;
-    void *args[] = {
-        &stateSpaceInfoDevice,
-        &inputSpaceInfoDevice,
-        &disturbanceSpaceBoundsDevice,
-        &tableDevice
-    };
+    if (isCooperative) {
+        void *args[] =  {
+            &stateSpaceInfoDevice,
+            &inputSpaceInfoDevice,
+            &disturbanceSpaceBoundsDevice,
+            &tableDevice
+        };
 
-    cuLaunchKernel(buildAutomatonCoop,
-                   (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
-                   BLOCK_SIZE, 1, 1,
-                   0, NULL,
-                   args,
-                   0
-    );
+        cuLaunchKernel(buildAutomaton,
+                       (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
+                       BLOCK_SIZE, 1, 1,
+                       0, NULL,
+                       args,
+                       0
+        );
+    }
+    else {
+        float hMaxDisturbJac[stateDimensions*disturbanceDimensions]; 
+
+        for(int i = 0; i < stateDimensions; i++) {
+            py::tuple row = maxDisturbJac[i].cast<py::tuple>();
+            for (int j = 0; j < disturbanceDimensions; j++) {
+                hMaxDisturbJac[i*disturbanceDimensions + j] = row[j].cast<float>();
+            }
+        }
+
+        float* dMaxDisturbJac;
+        cudaMalloc(&dMaxDisturbJac, stateDimensions * disturbanceDimensions * sizeof(float));
+        cudaMemcpy(dMaxDisturbJac, hMaxDisturbJac, stateDimensions * disturbanceDimensions * sizeof(float), cudaMemcpyHostToDevice);
+
+
+        void *args[] =  {
+            &stateSpaceInfoDevice,
+            &inputSpaceInfoDevice,
+            &disturbanceSpaceBoundsDevice,
+            &dMaxDisturbJac,
+            &tableDevice
+        };
+
+
+        CUresult res = cuLaunchKernel(buildAutomaton,
+                       (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
+                       BLOCK_SIZE, 1, 1,
+                       0, NULL,
+                       args,
+                       0
+        );
+
+        if (res != CUDA_SUCCESS) {
+            const char *errorName = nullptr;
+            cuGetErrorName(res, &errorName);
+            printf("cuLaunchKernel failed: %s\n", errorName);
+        }
+        else {
+            printf("cuLaunchKernel succeeded.\n");
+        }
+    }
+
+
     cuCtxSynchronize();
 
 
@@ -232,80 +293,80 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
 
     // =============== Testing ===============
-    printf("=== Combined Direct + Reverse Table ===\n");
-
-    int stateCount = 10;
-    int inputCount = inputSpaceInfoHost.cellCount;
-
-    // Host buffers
-    int hDir[stateCount * inputCount * MAX_TRANSITIONS];
-    int hRev[stateCount * inputCount * MAX_PREDECESSORS];
-
-    // Copy forward transitions
-    cudaMemcpy(
-        hDir,
-        table.dData,
-        stateCount * inputCount * MAX_TRANSITIONS * sizeof(int),
-        cudaMemcpyDeviceToHost
-    );
-
-    // Copy reverse transitions
-    cudaMemcpy(
-        hRev,
-        table.dRevData,
-        stateCount * inputCount * MAX_PREDECESSORS * sizeof(int),
-        cudaMemcpyDeviceToHost
-    );
-
-    for (int s = 0; s < stateCount; s++) {
-        for (int u = 0; u < inputCount; u++) {
-
-            printf("\n==============================\n");
-            printf("     State %d | Input %d\n", s, u);
-            printf("==============================\n");
-
-            int baseDir = (s * inputCount + u) * MAX_TRANSITIONS;
-            int baseRev = (s * inputCount + u) * MAX_PREDECESSORS;
-
-            // ---- DIRECT ----
-            printf("Direct : ");
-            bool dirEmpty = true;
-            for (int t = 0; t < MAX_TRANSITIONS; t++) {
-                int v = hDir[baseDir + t];
-                if (v != -1) dirEmpty = false;
-            }
-            if (dirEmpty) {
-                printf("[ none ]\n");
-            } else {
-                for (int t = 0; t < MAX_TRANSITIONS; t++) {
-                    int v = hDir[baseDir + t];
-                    if (v != -1) printf("%d ", v);
-                }
-                printf("\n");
-            }
-
-            // ---- REVERSE ----
-            printf("Reverse: ");
-            bool revEmpty = true;
-            for (int p = 0; p < MAX_PREDECESSORS; p++) {
-                int v = hRev[baseRev + p];
-                if (v != -1) revEmpty = false;
-            }
-            if (revEmpty) {
-                printf("[ none ]\n");
-            } else {
-                for (int p = 0; p < MAX_PREDECESSORS; p++) {
-                    int v = hRev[baseRev + p];
-                    if (v != -1) printf("%d ", v);
-                }
-                printf("\n");
-            }
-
-            printf("-----------------------------------\n");
-        }
-    }
-
-    printf("\n=== End Combined Table ===\n");
+    // printf("=== Combined Direct + Reverse Table ===\n");
+    //
+    // int stateCount = 10;
+    // int inputCount = inputSpaceInfoHost.cellCount;
+    //
+    // // Host buffers
+    // int hDir[stateCount * inputCount * MAX_TRANSITIONS];
+    // int hRev[stateCount * inputCount * MAX_PREDECESSORS];
+    //
+    // // Copy forward transitions
+    // cudaMemcpy(
+    //     hDir,
+    //     table.dData,
+    //     stateCount * inputCount * MAX_TRANSITIONS * sizeof(int),
+    //     cudaMemcpyDeviceToHost
+    // );
+    //
+    // // Copy reverse transitions
+    // cudaMemcpy(
+    //     hRev,
+    //     table.dRevData,
+    //     stateCount * inputCount * MAX_PREDECESSORS * sizeof(int),
+    //     cudaMemcpyDeviceToHost
+    // );
+    //
+    // for (int s = 0; s < stateCount; s++) {
+    //     for (int u = 0; u < inputCount; u++) {
+    //
+    //         printf("\n==============================\n");
+    //         printf("     State %d | Input %d\n", s, u);
+    //         printf("==============================\n");
+    //
+    //         int baseDir = (s * inputCount + u) * MAX_TRANSITIONS;
+    //         int baseRev = (s * inputCount + u) * MAX_PREDECESSORS;
+    //
+    //         // ---- DIRECT ----
+    //         printf("Direct : ");
+    //         bool dirEmpty = true;
+    //         for (int t = 0; t < MAX_TRANSITIONS; t++) {
+    //             int v = hDir[baseDir + t];
+    //             if (v != -1) dirEmpty = false;
+    //         }
+    //         if (dirEmpty) {
+    //             printf("[ none ]\n");
+    //         } else {
+    //             for (int t = 0; t < MAX_TRANSITIONS; t++) {
+    //                 int v = hDir[baseDir + t];
+    //                 if (v != -1) printf("%d ", v);
+    //             }
+    //             printf("\n");
+    //         }
+    //
+    //         // ---- REVERSE ----
+    //         printf("Reverse: ");
+    //         bool revEmpty = true;
+    //         for (int p = 0; p < MAX_PREDECESSORS; p++) {
+    //             int v = hRev[baseRev + p];
+    //             if (v != -1) revEmpty = false;
+    //         }
+    //         if (revEmpty) {
+    //             printf("[ none ]\n");
+    //         } else {
+    //             for (int p = 0; p < MAX_PREDECESSORS; p++) {
+    //                 int v = hRev[baseRev + p];
+    //                 if (v != -1) printf("%d ", v);
+    //             }
+    //             printf("\n");
+    //         }
+    //
+    //         printf("-----------------------------------\n");
+    //     }
+    // }
+    //
+    // printf("\n=== End Combined Table ===\n");
 }
 
 Automaton::~Automaton() {

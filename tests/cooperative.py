@@ -28,14 +28,16 @@ else:
 
 print(model.transitionFunction.equations)
 printer = CodePrinter(model)
-# print("__")
-print(printer.printCode())
-# print("__")
-# automaton = Automaton(
-#     stateSpace,
-#     inputSpace,
-#     disturbanceSpace,
-#     printer.printCode()
-# )
+
+# print(printer.printCode())
+
+automaton = Automaton(
+    stateSpace,
+    inputSpace,
+    disturbanceSpace,
+    model.transitionFunction.isCooperative,
+    model.transitionFunction.disturbJacUpper,
+    printer.printCode()
+)
 
 # print(model.transitionFunction.symbolContext)

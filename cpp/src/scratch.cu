@@ -1,5 +1,5 @@
+// #include <cstdio>
 // #include <utilsDevice.hpp>
-//
 // __device__ void acquireLock(int* lock) {{
 //     while (atomicCAS(lock, 0, 1) != 0);
 // }}
@@ -8,14 +8,139 @@
 //     atomicExch(lock, 0);
 // }}
 //
+// #define GRAD_DESCENT_ITERS 100
+// #define CLAMP(x, a, b) fmaxf(a, fminf(x, b))
+//
+//
 // __device__ __forceinline__ 
 // void fAtPoint(const float* __restrict__ state, 
 //               const float* __restrict__ input, 
 //               const float* __restrict__ disturbance,
-//               float*       __restrict__ nextState)
+//               float*       __restrict__ fAtPointOut)
 // {{
-//     // {code}
+//     // {fAtPointCode}
+// }}\
+//
+//
+// __device__ __forceinline__ 
+// void stateJacAtPoint(const float* __restrict__ states,
+//                      const float* __restrict__ inputs,
+//                      const float* __restrict__ disturbances,
+//                      float*       __restrict__ stateJacAtPointOut)
+// {{
+//     // {stateJacAtPointCode}
+// }}\
+//
+//
+// __device__ __forceinline__ 
+// void stateJacGradAtPoint(const float* __restrict__ states,
+//                          const float* __restrict__ inputs,
+//                          const float* __restrict__ disturbances,
+//                          float*       __restrict__ outStates,
+//                          float*       __restrict__ outInputs,
+//                          float*       __restrict__ outDisturbances)
+// {{
+//     // {stateJacGradAtPointCode}
+// }}\
+//
+//
+// // DOUBLE BRACES
+// enum Extremum{
+//     MAXIMUM,
+//     MINIMUM
+// };
+//
+//
+//
+// __device__ __forceinline__ 
+// void findStateJacExtremum(const Extremum      extremum,
+//                           const float* __restrict__ stateLowerBound,
+//                           const float* __restrict__ stateUpperBound,
+//                           const float* __restrict__ inputLowerBound,
+//                           const float* __restrict__ inputUpperBound,
+//                           const float* __restrict__ disturbanceLowerBound,
+//                           const float* __restrict__ disturbanceUpperBound,
+//                           int                       nx,
+//                           int                       nu,
+//                           int                       nw,
+//                           float*       __restrict__ out)              // jacobian max values (len = nx**2)
+// {{
+//     float timeStep = 0.f;
+//
+//     {{
+//         for (int i = 0; i < nx; i++){{
+//             timeStep += (stateUpperBound[i] - stateLowerBound[i]) * (stateUpperBound[i] - stateLowerBound[i]);
+//         }}
+//
+//         for (int i = 0; i < nu; i++){{
+//             timeStep += (inputUpperBound[i] - inputLowerBound[i]) * (inputUpperBound[i] - inputLowerBound[i]);
+//         }}
+//
+//         for (int i = 0; i < nw; i++){{
+//             timeStep += (disturbanceUpperBound[i] - disturbanceLowerBound[i]) * (disturbanceUpperBound[i] - disturbanceLowerBound[i]);
+//         }}
+//
+//         timeStep = sqrtf(timeStep)  / 50.f;
+//     }}
+//
+//
+//     float states[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+//     float inputs[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+//     float disturbances[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+//
+//     // Filling with initial guesses
+//     for (int i = 0; i < nx * nx; i++){{
+//         for (int j = 0; j < nx; j++){{
+//             states[i*nx + j] = (stateLowerBound[j] + stateUpperBound[j]) / 2.f;
+//         }}
+//
+//         for (int j = 0; j < nu; j++){{
+//             inputs[i*nu + j] = (inputLowerBound[j] + inputUpperBound[j]) / 2.f;
+//         }}
+//
+//         for (int j = 0; j < nw; j++){{
+//             disturbances[i*nw + j] = (disturbanceLowerBound[i] + disturbanceUpperBound[i]) / 2.f;
+//         }}
+//     }}
+//
+//     float nextStates[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+//     float nextInputs[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+//     float nextDisturbances[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+//
+//     for (int iter = 0; iter < GRAD_DESCENT_ITERS; iter++){{
+//         stateJacGradAtPoint(states,
+//                             inputs,
+//                             disturbances,
+//                             nextStates,
+//                             nextInputs,
+//                             nextDisturbances
+//         );
+//
+//         for (int i = 0; i < nx * nx; i++){{
+//             for (int j = 0; j < nx; j++){{
+//                 states[i*nx + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextStates[i*nx + j] * timeStep;
+//                 states[i*nx + j] = CLAMP(states[i*nx + j], stateLowerBound[j], stateUpperBound[j]);
+//             }}
+//
+//             for (int j = 0; j < nu; j++){{
+//                 inputs[i*nu + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextInputs[i*nu + j] * timeStep;
+//                 inputs[i*nx + j] = CLAMP(inputs[i*nx + j], inputLowerBound[j], inputUpperBound[j]);
+//             }}
+//
+//             for (int j = 0; j < nw; j++){{
+//                 disturbances[i*nw + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextDisturbances[i*nw + j] * timeStep;
+//                 disturbances[i*nx + j] = CLAMP(disturbances[i*nx + j], disturbanceLowerBound[j], disturbanceUpperBound[j]);
+//             }}
+//         }}
+//     }}
+//
+//     stateJacAtPoint(states,
+//                     inputs,
+//                     disturbances,
+//                     out
+//     );
 // }}
+//
 //
 //
 // __device__ __forceinline__
@@ -49,38 +174,43 @@
 //     }}
 // }}
 //
+//
+//
 // __device__ __forceinline__
-// void storeOutput(int* __restrict__     transitionLocks,
-//                  int                   stateIdx,
+// void storeOutput(int                   stateIdx,
 //                  int                   inputIdx,
 //                  TransitionTableDevice table) {{
-//     printf("storing reverse output");
+//     //printf("storing reverse output");
 //
 //     // &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
 //
 //     // we now set the other way around with the reverse array
-//     // for(int i = 0; i < MAX_TRANSITIONS; i++) {{
-//     //     if(table.dData[i] == -1) break; // no more predecessors;
-//     //
-//     //     int predecessor = table.dData[i];
-//     //     int offset = table.getRevOffset(predecessor, inputIdx);
-//     //
-//     //     acquireLock(&transitionLocks[offset]);
-//     //     while(table.dRevData[offset] != -1) offset++;
-//     //     table.dRevData[offset] = stateIdx;
-//     //     releaseLock(&transitionLocks[offset]);
-//     // }}
+//     for(int i = 0; i < MAX_TRANSITIONS; i++) {{
+//         int directOffset = table.getOffset(stateIdx, inputIdx, i);        
 //
+//         int predecessor = table.dData[directOffset];
+//         if(predecessor == -1) break;
 //
+//         int reverseOffset = table.getRevOffset(predecessor, inputIdx);
+//         int lockOffset = predecessor * table.inputCount + inputIdx;
+//
+//         acquireLock(&table.dTransitionLocks[lockOffset]);
+//         while(table.dRevData[reverseOffset] != -1) reverseOffset++;
+//         table.dRevData[reverseOffset] = stateIdx;
+//         releaseLock(&table.dTransitionLocks[lockOffset]);
+//
+//     }}
 // }}
 //
 //
+//
+//
 // extern "C" __global__ 
-// void buildAutomatonCoop(const SpaceInfoDevice   stateSpaceInfo,
-//                         const SpaceInfoDevice   inputSpaceInfo,
-//                         const SpaceBoundsDevice disturbanceSpaceBounds,
-//                         int*  __restrict__      transitionLocks,
-//                         TransitionTableDevice   table) 
+// void buildAutomatonNonCoop(const SpaceInfoDevice     stateSpaceInfo,
+//                            const SpaceInfoDevice     inputSpaceInfo,
+//                            const SpaceBoundsDevice   disturbanceSpaceBounds,
+//                            const float* __restrict__ maxDisturbJac,
+//                            TransitionTableDevice     table) 
 // {{
 //     int stateIdx = blockIdx.x * blockDim.x + threadIdx.x;
 //     if (stateIdx >= table.stateCount) return;
@@ -91,23 +221,110 @@
 //         resolutionStride[i] = stateSpaceInfo.dResolutions[i-1] * resolutionStride[i-1];
 //
 //
-//     for (int inputIdx = 0; inputIdx < inputSpaceInfo.cellCount; ++inputIdx) {{
-//         float cellLowerBound[MAX_DIMENSIONS];
-//         float cellUpperBound[MAX_DIMENSIONS];
-//         stateSpaceInfo.getCellBounds(stateIdx, cellLowerBound, cellUpperBound);
+//     float stateCellLowerBound[MAX_DIMENSIONS];
+//     float stateCellUpperBound[MAX_DIMENSIONS];
+//     float stateCellCenter[MAX_DIMENSIONS];
+//     stateSpaceInfo.getCellBounds(stateIdx, stateCellLowerBound, stateCellUpperBound);
+//     stateSpaceInfo.getCellCenter(stateIdx, stateCellCenter);
 //
-//         float inputCellCenter[MAX_DIMENSIONS];
+//     float inputCellLowerBound[MAX_DIMENSIONS];
+//     float inputCellUpperBound[MAX_DIMENSIONS];
+//     float inputCellCenter[MAX_DIMENSIONS];
+//
+//     float targetLowerBound[MAX_DIMENSIONS];
+//     float targetUpperBound[MAX_DIMENSIONS];
+//
+//     int targetLowerBoundCoords[MAX_DIMENSIONS];
+//     int targetUpperBoundCoords[MAX_DIMENSIONS];
+//
+//     const int nx = stateSpaceInfo.dimensions;
+//     const int nu = inputSpaceInfo.dimensions;
+//     const int nw = disturbanceSpaceBounds.dimensions;
+//
+//     for (int inputIdx = 0; inputIdx < inputSpaceInfo.cellCount; ++inputIdx) {{
+//         inputSpaceInfo.getCellBounds(inputIdx, inputCellLowerBound, inputCellUpperBound);
 //         inputSpaceInfo.getCellCenter(inputIdx, inputCellCenter);
 //
 //
-//         float targetLowerBound[MAX_DIMENSIONS];
-//         float targetUpperBound[MAX_DIMENSIONS];
+//         float maxStateJac[MAX_DIMENSIONS*MAX_DIMENSIONS];
 //
-//         fAtPoint(cellLowerBound, inputCellCenter, disturbanceSpaceBounds.dLowerBound, targetLowerBound);
-//         fAtPoint(cellUpperBound, inputCellCenter, disturbanceSpaceBounds.dUpperBound, targetUpperBound);
+//         // Compute max of abs state jac
+//         {{
+//             float minStateJac[MAX_DIMENSIONS*MAX_DIMENSIONS];
 //
-//         int targetLowerBoundCoords[MAX_DIMENSIONS];
-//         int targetUpperBoundCoords[MAX_DIMENSIONS];
+//
+//             findStateJacExtremum(MINIMUM,
+//                                  stateCellLowerBound,
+//                                  stateCellUpperBound,
+//                                  inputCellLowerBound,
+//                                  inputCellUpperBound,
+//                                  disturbanceSpaceBounds.dLowerBound,
+//                                  disturbanceSpaceBounds.dUpperBound,
+//                                  nx,
+//                                  nu,
+//                                  nw,
+//                                  minStateJac
+//             );
+//
+//
+//             findStateJacExtremum(MAXIMUM,
+//                                  stateCellLowerBound,
+//                                  stateCellUpperBound,
+//                                  inputCellLowerBound,
+//                                  inputCellUpperBound,
+//                                  disturbanceSpaceBounds.dLowerBound,
+//                                  disturbanceSpaceBounds.dUpperBound,
+//                                  nx,
+//                                  nu,
+//                                  nw,
+//                                  maxStateJac
+//             );
+//
+//
+//             for (int i = 0; i < nx * nx; i++){{
+//                 maxStateJac[i] = fmaxf(maxStateJac[i], -minStateJac[i]);
+//             }}
+//         }}
+//
+//         if (stateIdx==0 && inputIdx == 0) {
+//             printf("============= STATE 0 - INPUT 0 ==============");
+//             printf("maxStateJac = [\n");
+//
+//             for(int i = 0; i < nx; i++){{
+//                 printf("[");
+//
+//                 for (int j = 0; j < nx; j++) {{
+//                     printf("%.3f ", maxStateJac[i*nx + j]);
+//                 }}
+//
+//                 printf("]\n");
+//             }}
+//
+//             printf("]\n");
+//         }
+//
+//
+//
+//         fAtPoint(stateCellCenter, inputCellCenter, disturbanceSpaceBounds.dCenter, targetLowerBound);
+//         fAtPoint(stateCellCenter, inputCellCenter, disturbanceSpaceBounds.dCenter, targetUpperBound);
+//
+//
+//         for (int i = 0; i < nx; i++){{
+//             for (int j = 0; j < nx; j++){{
+//                 float stateHalfWidth = maxStateJac[i*nx + j] * 
+//                     0.5f * (stateCellUpperBound[j] - stateCellLowerBound[j]);
+//                 targetLowerBound[i] -= stateHalfWidth;
+//                 targetUpperBound[i] += stateHalfWidth;
+//             }}
+//
+//             for (int j = 0; j < nw; j++){{
+//                 float disturbHalfWidth = maxDisturbJac[i*nw + j] * 
+//                     0.5f * (disturbanceSpaceBounds.dUpperBound[j] - disturbanceSpaceBounds.dLowerBound[j]);
+//                 targetLowerBound[i] -= disturbHalfWidth;
+//                 targetUpperBound[i] += disturbHalfWidth;
+//             }}
+//         }}
+//
 //
 //         stateSpaceInfo.getCellCoords(targetLowerBound, targetLowerBoundCoords);
 //         stateSpaceInfo.getCellCoords(targetUpperBound, targetUpperBoundCoords);
@@ -115,10 +332,10 @@
 //         floodFill(targetLowerBoundCoords, 
 //                   targetUpperBoundCoords, 
 //                   resolutionStride,
-//                   stateSpaceInfo.dimensions, 
+//                   nx, 
 //                   &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
-//         );
+//                   );
 //
-//         storeOutput(transitionLocks, stateIdx, inputIdx, table);
+//         storeOutput(stateIdx, inputIdx, table);
 //     }}
 // }}\

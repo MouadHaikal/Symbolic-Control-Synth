@@ -6,4 +6,6 @@ class Automaton:
                  stateSpace: DiscreteSpace, 
                  inputSpace: DiscreteSpace, 
                  disturbanceSpace: ContinuousSpace, 
-                 fAtPointCode: str) -> None: ...
+                 isCooperative: bool,
+                 maxDisturbJac: tuple[tuple[float, ...], ...] | None,
+                 buildAutomatonCode: str) -> None: ...

@@ -176,13 +176,13 @@ class TransitionFunction:
             return True, None, None, None
 
 
-        disturbJacUpper = sp.Matrix([
-            [ 
-                maxVal(sp.Abs(disturbJac[i,j])) 
+        disturbJacUpper = tuple(
+            tuple( 
+                float(maxVal(sp.Abs(disturbJac[i,j])))
                 for j in range(disturbJac.cols)
-            ]
+            )
             for i in range(disturbJac.rows)
-        ])
+        )
 
 
         stateJacGrad = tuple(

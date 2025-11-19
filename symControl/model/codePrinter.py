@@ -67,16 +67,19 @@ class CodePrinter(C11CodePrinter):
         )
 
     def __printNonCoopCode(self):
-        self.__stateVar = "states"
-        self.__inputVar = "inputs"
-        self.__disturbanceVar = "disturbances"
-
+        self.__stateVar = "state"
+        self.__inputVar = "input"
+        self.__disturbanceVar = "disturbance"
 
         fAtPointOut = sp.MatrixSymbol("fAtPointOut", self.model.stateSpace.dimensions, 1)
 
         self.__exprIdx = 0
         fAtPointCode = self.doprint(self.model.transitionFunction.equations, assign_to=fAtPointOut)
 
+
+        self.__stateVar = "states"
+        self.__inputVar = "inputs"
+        self.__disturbanceVar = "disturbances"
 
         nx = self.model.transitionFunction.dimensions[STATE];
         nu = self.model.transitionFunction.dimensions[INPUT];
