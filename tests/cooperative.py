@@ -5,16 +5,16 @@ from symControl.model.codePrinter import CodePrinter
 from symControl.bindings import Automaton
 
 
-stateSpace       = DiscreteSpace(2, [(0, 100), (0, 100)], [100, 100])
-inputSpace       = DiscreteSpace(2, [(-1, 1), (-1, 1)], [3, 5])
-disturbanceSpace = ContinuousSpace(1, [(-0.1, 0.1)])
+stateSpace       = DiscreteSpace(2, [(0, 1), (0, 1)], [4, 4])
+inputSpace       = DiscreteSpace(2, [(-1, 1), (-1, 1)], [2, 2])
+disturbanceSpace = ContinuousSpace(1, [(0.0, 0.05)])
 
 
 model = Model(
     stateSpace=stateSpace,            
     controlSpace=inputSpace,        
     disturbanceSpace=disturbanceSpace,
-    timeStep=0.1,
+    timeStep=1,
     equations=[
         "(x1**3)/3 + tau * (u1**2 + w1)",
         "sin(x2) + tau * (u2 + w1**2)", 

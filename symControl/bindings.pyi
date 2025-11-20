@@ -7,5 +7,5 @@ class Automaton:
                  inputSpace: DiscreteSpace, 
                  disturbanceSpace: ContinuousSpace, 
                  isCooperative: bool,
-                 maxDisturbJac: tuple[tuple[float, ...], ...] | None,
+                 maxDisturbJac: tuple[tuple[float, ...], ...],
                  buildAutomatonCode: str) -> None: ...

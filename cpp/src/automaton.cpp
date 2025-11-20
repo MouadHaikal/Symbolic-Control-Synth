@@ -5,6 +5,7 @@
 #include <nvrtc.h>
 #include <cstddef>
 #include <chrono>
+#include <iostream>
 
 #define BLOCK_SIZE 512
 
@@ -222,6 +223,7 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     };
 
 
+    CUresult resKernelLaunch;
     if (isCooperative) {
         void *args[] =  {
             &stateSpaceInfoDevice,
@@ -230,12 +232,12 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
             &tableDevice
         };
 
-        cuLaunchKernel(buildAutomaton,
-                       (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
-                       BLOCK_SIZE, 1, 1,
-                       0, NULL,
-                       args,
-                       0
+        resKernelLaunch = cuLaunchKernel(buildAutomaton,
+                                         (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
+                                         BLOCK_SIZE, 1, 1,
+                                         0, NULL,
+                                         args,
+                                         0
         );
     }
     else {
@@ -262,22 +264,22 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
         };
 
 
-        CUresult res = cuLaunchKernel(buildAutomaton,
-                       (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
-                       BLOCK_SIZE, 1, 1,
-                       0, NULL,
-                       args,
-                       0
+        resKernelLaunch = cuLaunchKernel(buildAutomaton,
+                                         (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
+                                         BLOCK_SIZE, 1, 1,
+                                         0, NULL,
+                                         args,
+                                         0
         );
+    }
 
-        if (res != CUDA_SUCCESS) {
-            const char *errorName = nullptr;
-            cuGetErrorName(res, &errorName);
-            printf("cuLaunchKernel failed: %s\n", errorName);
-        }
-        else {
-            printf("cuLaunchKernel succeeded.\n");
-        }
+    if (resKernelLaunch != CUDA_SUCCESS) {
+        const char *errorName = nullptr;
+        cuGetErrorName(resKernelLaunch, &errorName);
+        printf("cuLaunchKernel failed: %s\n", errorName);
+    }
+    else {
+        printf("cuLaunchKernel succeeded.\n");
     }
 
 
@@ -326,59 +328,61 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
 
     // =============== Testing ===============
-    // printf("=== Combined Direct + Reverse Table ===\n");
-    //
-    //
-    // for (int s = 0; s < table.stateCount; s++) {
-    //     for (int u = 0; u < table.inputCount; u++) {
-    //
-    //         printf("\n==============================\n");
-    //         printf("     State %d | Input %d\n", s, u);
-    //         printf("==============================\n");
-    //
-    //         int baseDir = (s * table.inputCount + u) * MAX_TRANSITIONS;
-    //         int baseRev = (s * table.inputCount + u) * MAX_PREDECESSORS;
-    //
-    //         // ---- DIRECT ----
-    //         printf("Direct : ");
-    //         bool dirEmpty = true;
-    //         for (int t = 0; t < MAX_TRANSITIONS; t++) {
-    //             int v = hData[baseDir + t];
-    //             if (v != -1) dirEmpty = false;
-    //         }
-    //         if (dirEmpty) {
-    //             printf("[ none ]\n");
-    //         } else {
-    //             for (int t = 0; t < MAX_TRANSITIONS; t++) {
-    //                 int v = hData[baseDir + t];
-    //                 if (v != -1) printf("%d ", v);
-    //             }
-    //             printf("\n");
-    //         }
-    //
-    //         // ---- REVERSE ----
-    //         printf("Reverse: ");
-    //         bool revEmpty = true;
-    //         for (int p = 0; p < MAX_PREDECESSORS; p++) {
-    //             int v = hRevData[baseRev + p];
-    //             if (v != -1) revEmpty = false;
-    //         }
-    //         if (revEmpty) {
-    //             printf("[ none ]\n");
-    //         } else {
-    //             for (int p = 0; p < MAX_PREDECESSORS; p++) {
-    //                 int v = hRevData[baseRev + p];
-    //                 if (v != -1) printf("%d ", v);
-    //             }
-    //             printf("\n");
-    //         }
-    //
-    //         printf("-----------------------------------\n");
-    //     }
-    // }
-    //
-    // printf("\n=== End Combined Table ===\n");
-    //
+#ifdef DEBUG
+    printf("=== Combined Direct + Reverse Table ===\n");
+
+
+    for (int s = 0; s < table.stateCount; s++) {
+        for (int u = 0; u < table.inputCount; u++) {
+
+            printf("\n==============================\n");
+            printf("     State %d | Input %d\n", s, u);
+            printf("==============================\n");
+
+            int baseDir = (s * table.inputCount + u) * MAX_TRANSITIONS;
+            int baseRev = (s * table.inputCount + u) * MAX_PREDECESSORS;
+
+            // ---- DIRECT ----
+            printf("Direct : ");
+            bool dirEmpty = true;
+            for (int t = 0; t < MAX_TRANSITIONS; t++) {
+                int v = hData[baseDir + t];
+                if (v != -1) dirEmpty = false;
+            }
+            if (dirEmpty) {
+                printf("[ none ]\n");
+            } else {
+                for (int t = 0; t < MAX_TRANSITIONS; t++) {
+                    int v = hData[baseDir + t];
+                    if (v != -1) printf("%d ", v);
+                }
+                printf("\n");
+            }
+
+            // ---- REVERSE ----
+            printf("Reverse: ");
+            bool revEmpty = true;
+            for (int p = 0; p < MAX_PREDECESSORS; p++) {
+                int v = hRevData[baseRev + p];
+                if (v != -1) revEmpty = false;
+            }
+            if (revEmpty) {
+                printf("[ none ]\n");
+            } else {
+                for (int p = 0; p < MAX_PREDECESSORS; p++) {
+                    int v = hRevData[baseRev + p];
+                    if (v != -1) printf("%d ", v);
+                }
+                printf("\n");
+            }
+
+            printf("-----------------------------------\n");
+        }
+    }
+
+    printf("\n=== End Combined Table ===\n");
+
+#endif
     // ============== Cleanup ================
     delete[] hData;
     delete[] hRevData;
@@ -390,7 +394,6 @@ Automaton::~Automaton() {
 }
 
 void Automaton::preProcessSecuritySpec(int* hData, int* hRevData, int* roots, int size) {
-
     for(int i = 0; i < size; i++) {
         int stateIdx = roots[i];
         // remove the root from the graph

@@ -1,10 +1,20 @@
-__includesCodesTemplate="""\
+__includesCodeTemplate="""\
     #include <utilsDevice.hpp>
-    __device__ void acquireLock(int* lock) {{
+"""
+
+__definesCodeTemplate="""\
+    #define GRAD_DESCENT_ITERS 50
+    #define CLAMP(x, a, b) fmaxf(a, fminf(x, b))
+"""
+
+__mutexHandlingCodeTemplate="""\
+    __device__ __forceinline__
+    void acquireLock(int* lock) {{
         while (atomicCAS(lock, 0, 1) != 0);
     }}
 
-    __device__ void releaseLock(int* lock) {{
+    __device__ __forceinline__
+    void releaseLock(int* lock) {{
         atomicExch(lock, 0);
     }}
 """
@@ -17,6 +27,126 @@ __fAtPointCodeTemplate="""\
                   float*       __restrict__ fAtPointOut)
     {{
         {fAtPointCode}
+    }}\
+"""
+
+__stateJacAtPointCodeTemplate="""\
+    __device__ __forceinline__ 
+    void stateJacAtPoint(const float* __restrict__ states,
+                         const float* __restrict__ inputs,
+                         const float* __restrict__ disturbances,
+                         float*       __restrict__ stateJacAtPointOut)
+    {{
+        {stateJacAtPointCode}
+    }}\
+"""
+
+__stateJacGradAtPointCodeTemplate="""\
+    __device__ __forceinline__ 
+    void stateJacGradAtPoint(const float* __restrict__ states,
+                             const float* __restrict__ inputs,
+                             const float* __restrict__ disturbances,
+                             float*       __restrict__ outStates,
+                             float*       __restrict__ outInputs,
+                             float*       __restrict__ outDisturbances)
+    {{
+        {stateJacGradAtPointCode}
+    }}\
+"""
+
+__findStateJacExtremumCodeTemplate="""\
+    enum Extremum{{
+        MAXIMUM,
+        MINIMUM
+    }};
+
+    __device__ __forceinline__ 
+    void findStateJacExtremum(const Extremum      extremum,
+                              const float* __restrict__ stateLowerBound,
+                              const float* __restrict__ stateUpperBound,
+                              const float* __restrict__ inputLowerBound,
+                              const float* __restrict__ inputUpperBound,
+                              const float* __restrict__ disturbanceLowerBound,
+                              const float* __restrict__ disturbanceUpperBound,
+                              int                       nx,
+                              int                       nu,
+                              int                       nw,
+                              float*       __restrict__ out)
+    {{
+        float timeStep = 0.f;
+
+        {{
+            for (int i = 0; i < nx; i++){{
+                timeStep += (stateUpperBound[i] - stateLowerBound[i]) * (stateUpperBound[i] - stateLowerBound[i]);
+            }}
+
+            for (int i = 0; i < nu; i++){{
+                timeStep += (inputUpperBound[i] - inputLowerBound[i]) * (inputUpperBound[i] - inputLowerBound[i]);
+            }}
+
+            for (int i = 0; i < nw; i++){{
+                timeStep += (disturbanceUpperBound[i] - disturbanceLowerBound[i]) * (disturbanceUpperBound[i] - disturbanceLowerBound[i]);
+            }}
+
+            timeStep = sqrtf(timeStep)  / 10.f;
+        }}
+
+
+        float states[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+        float inputs[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+        float disturbances[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+
+        // Filling with initial guesses
+        for (int i = 0; i < nx * nx; i++){{
+            for (int j = 0; j < nx; j++){{
+                states[i*nx + j] = (stateLowerBound[j] + stateUpperBound[j]) / 2.f;
+            }}
+
+            for (int j = 0; j < nu; j++){{
+                inputs[i*nu + j] = (inputLowerBound[j] + inputUpperBound[j]) / 2.f;
+            }}
+
+            for (int j = 0; j < nw; j++){{
+                disturbances[i*nw + j] = (disturbanceLowerBound[i] + disturbanceUpperBound[i]) / 2.f;
+            }}
+        }}
+
+        float nextStates[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+        float nextInputs[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+        float nextDisturbances[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
+        
+        for (int iter = 0; iter < GRAD_DESCENT_ITERS; iter++){{
+            stateJacGradAtPoint(states,
+                                inputs,
+                                disturbances,
+                                nextStates,
+                                nextInputs,
+                                nextDisturbances
+            );
+
+            for (int i = 0; i < nx * nx; i++){{
+                for (int j = 0; j < nx; j++){{
+                    states[i*nx + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextStates[i*nx + j] * timeStep;
+                    states[i*nx + j] = CLAMP(states[i*nx + j], stateLowerBound[j], stateUpperBound[j]);
+                }}
+
+                for (int j = 0; j < nu; j++){{
+                    inputs[i*nu + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextInputs[i*nu + j] * timeStep;
+                    inputs[i*nx + j] = CLAMP(inputs[i*nx + j], inputLowerBound[j], inputUpperBound[j]);
+                }}
+
+                for (int j = 0; j < nw; j++){{
+                    disturbances[i*nw + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextDisturbances[i*nw + j] * timeStep;
+                    disturbances[i*nx + j] = CLAMP(disturbances[i*nx + j], disturbanceLowerBound[j], disturbanceUpperBound[j]);
+                }}
+            }}
+        }}
+
+        stateJacAtPoint(states,
+                        inputs,
+                        disturbances,
+                        out
+        );
     }}\
 """
 
@@ -81,8 +211,12 @@ __storeOutputCodeTemplate="""\
     }}
 """
 
+
+
 coopCodeTemplate="""\
-    """ + __includesCodesTemplate + """
+    """ + __includesCodeTemplate + """
+
+    """ + __mutexHandlingCodeTemplate + """
 
     """ + __fAtPointCodeTemplate + """
 
@@ -138,133 +272,12 @@ coopCodeTemplate="""\
     }}\
 """
 
-
-__stateJacAtPointCodeTemplate="""\
-    __device__ __forceinline__ 
-    void stateJacAtPoint(const float* __restrict__ states,
-                         const float* __restrict__ inputs,
-                         const float* __restrict__ disturbances,
-                         float*       __restrict__ stateJacAtPointOut)
-    {{
-        {stateJacAtPointCode}
-    }}\
-"""
-
-__stateJacGradAtPointCodeTemplate="""\
-    __device__ __forceinline__ 
-    void stateJacGradAtPoint(const float* __restrict__ states,
-                             const float* __restrict__ inputs,
-                             const float* __restrict__ disturbances,
-                             float*       __restrict__ outStates,
-                             float*       __restrict__ outInputs,
-                             float*       __restrict__ outDisturbances)
-    {{
-        {stateJacGradAtPointCode}
-    }}\
-"""
-
-__findStateJacExtremumCodeTemplate="""\
-    enum Extremum{{
-        MAXIMUM,
-        MINIMUM
-    }};
-
-    __device__ __forceinline__ 
-    void findStateJacExtremum(const Extremum      extremum,
-                              const float* __restrict__ stateLowerBound,
-                              const float* __restrict__ stateUpperBound,
-                              const float* __restrict__ inputLowerBound,
-                              const float* __restrict__ inputUpperBound,
-                              const float* __restrict__ disturbanceLowerBound,
-                              const float* __restrict__ disturbanceUpperBound,
-                              int                       nx,
-                              int                       nu,
-                              int                       nw,
-                              float*       __restrict__ out)              // jacobian max values (len = nx**2)
-    {{
-        float timeStep = 0.f;
-
-        {{
-            for (int i = 0; i < nx; i++){{
-                timeStep += (stateUpperBound[i] - stateLowerBound[i]) * (stateUpperBound[i] - stateLowerBound[i]);
-            }}
-
-            for (int i = 0; i < nu; i++){{
-                timeStep += (inputUpperBound[i] - inputLowerBound[i]) * (inputUpperBound[i] - inputLowerBound[i]);
-            }}
-
-            for (int i = 0; i < nw; i++){{
-                timeStep += (disturbanceUpperBound[i] - disturbanceLowerBound[i]) * (disturbanceUpperBound[i] - disturbanceLowerBound[i]);
-            }}
-
-            timeStep = sqrtf(timeStep)  / 50.f;
-        }}
-
-
-        float states[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
-        float inputs[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
-        float disturbances[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
-
-        // Filling with initial guesses
-        for (int i = 0; i < nx * nx; i++){{
-            for (int j = 0; j < nx; j++){{
-                states[i*nx + j] = (stateLowerBound[j] + stateUpperBound[j]) / 2.f;
-            }}
-
-            for (int j = 0; j < nu; j++){{
-                inputs[i*nu + j] = (inputLowerBound[j] + inputUpperBound[j]) / 2.f;
-            }}
-
-            for (int j = 0; j < nw; j++){{
-                disturbances[i*nw + j] = (disturbanceLowerBound[i] + disturbanceUpperBound[i]) / 2.f;
-            }}
-        }}
-
-        float nextStates[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
-        float nextInputs[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
-        float nextDisturbances[MAX_DIMENSIONS*MAX_DIMENSIONS*MAX_DIMENSIONS];
-        
-        for (int iter = 0; iter < GRAD_DESCENT_ITERS; iter++){{
-            stateJacGradAtPoint(states,
-                                inputs,
-                                disturbances,
-                                nextStates,
-                                nextInputs,
-                                nextDisturbances
-            );
-
-            for (int i = 0; i < nx * nx; i++){{
-                for (int j = 0; j < nx; j++){{
-                    states[i*nx + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextStates[i*nx + j] * timeStep;
-                    states[i*nx + j] = CLAMP(states[i*nx + j], stateLowerBound[j], stateUpperBound[j]);
-                }}
-
-                for (int j = 0; j < nu; j++){{
-                    inputs[i*nu + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextInputs[i*nu + j] * timeStep;
-                    inputs[i*nx + j] = CLAMP(inputs[i*nx + j], inputLowerBound[j], inputUpperBound[j]);
-                }}
-
-                for (int j = 0; j < nw; j++){{
-                    disturbances[i*nw + j] += ((extremum==MAXIMUM) ? 1.f : -1.f) * nextDisturbances[i*nw + j] * timeStep;
-                    disturbances[i*nx + j] = CLAMP(disturbances[i*nx + j], disturbanceLowerBound[j], disturbanceUpperBound[j]);
-                }}
-            }}
-        }}
-
-        stateJacAtPoint(states,
-                        inputs,
-                        disturbances,
-                        out
-        );
-    }}\
-"""
-
-
 nonCoopCodeTemplate="""\
-    """ + __includesCodesTemplate + """
+    """ + __includesCodeTemplate + """
 
-    #define GRAD_DESCENT_ITERS 100
-    #define CLAMP(x, a, b) fmaxf(a, fminf(x, b))
+    """ + __definesCodeTemplate + """
+
+    """ + __mutexHandlingCodeTemplate + """
 
     """ + __fAtPointCodeTemplate + """
 
@@ -432,6 +445,8 @@ nonCoopCodeTemplate="""\
             }}
             */
 
+            // if (stateIdx == 0)
+            //     printf(\"Pre floodFill\\n\");
 
             stateSpaceInfo.getCellCoords(targetLowerBound, targetLowerBoundCoords);
             stateSpaceInfo.getCellCoords(targetUpperBound, targetUpperBoundCoords);
@@ -441,9 +456,12 @@ nonCoopCodeTemplate="""\
                       resolutionStride,
                       nx, 
                       &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
-                      );
+            );
 
             storeOutput(stateIdx, inputIdx, table);
+
+            // if (stateIdx == 0)
+            //     printf(\"Post floodFill\\n\");
         }}
     }}\
 """

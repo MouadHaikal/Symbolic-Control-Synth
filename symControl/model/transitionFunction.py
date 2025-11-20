@@ -49,7 +49,7 @@ class TransitionFunction:
             **{f"{DISTURBANCE}{i+1}": sp.Symbol(f"{DISTURBANCE}{i+1}") 
                 for i in range(disturbanceSpace.dimensions)},
 
-            TAU: sp.Symbol(TAU, positive=True)
+            TAU: sp.Symbol(TAU, positive=True),
         }
 
         self.timeStep = timeStep  # Value of the TAU symbol
@@ -68,6 +68,7 @@ class TransitionFunction:
 
         self.equations = tuple(sp.parse_expr(eq, local_dict=self.symbolContext) for eq in equations)
         self.equations = sp.Matrix([expr.subs({self.symbolContext[TAU]: self.timeStep}).simplify() for expr in self.equations])
+        print(self.equations)
 
         self.isCooperative, self.stateJac, self.stateJacGrad, self.disturbJacUpper = self.__cooperativeCheck();
 
@@ -173,7 +174,7 @@ class TransitionFunction:
         )
 
         if isCooperative:
-            return True, None, None, None
+            return True, None, None, tuple()
 
 
         disturbJacUpper = tuple(
