@@ -6,10 +6,11 @@
 #include <cstddef>
 #include <chrono>
 #include <iostream>
+#include <queue>
 
 #define BLOCK_SIZE 512
 
-// #define DEBUG
+#define DEBUG
 
 
 // py::scoped_interpreter guard{};
@@ -38,7 +39,7 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     }
 
 #ifdef DEBUG
-    freopen("debug.out", "w", stdout);
+    // freopen("debug.out", "w", stdout);
 #endif
 
     // =============== Compile Program ===============
@@ -284,6 +285,7 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
 
     cuCtxSynchronize();
+    printf("Kenel sala\n");
 
 
     // =============== Cleanup ===============
@@ -291,9 +293,10 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     cuModuleUnload(module);
     cuCtxDestroy(context);
 
-    auto start = std::chrono::high_resolution_clock::now();
 
     // =============== Applying Specifications ===============
+    printf("Applying security specification\n");
+    auto start = std::chrono::high_resolution_clock::now();
     int* hData = new int[table.stateCount * table.inputCount * MAX_TRANSITIONS];
     int* hRevData = new int[table.stateCount * table.inputCount * MAX_PREDECESSORS];
     bool* processed = new bool[table.stateCount];
@@ -313,16 +316,26 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
     for(int i = 0; i < table.stateCount; i++) processed[i] = false;
 
-
-    int roots[11] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    int size = 11;
+    int roots[6] = {5, 6, 100, 150, 200, 250};
+    int size = 6;
     resolveSecuritySpec(processed, hData, hRevData, roots, size);
 
 
 
     auto end = std::chrono::high_resolution_clock::now();
     double ms = std::chrono::duration<double, std::milli>(end - start).count();
-    printf("Time: %.5f ms.\n", ms);
+    printf("Time to apply security specification: %.5f ms.\n", ms);
+
+    printf("Applying reachibility specification\n");
+    int startState = 0;
+    int dimensions = 2;
+    int targets[3] = {1204, 1206, 1207};
+    int target_size = 3;
+
+    std::vector<int> controller = resolveReachabilitySpec(hData, hRevData, startState, dimensions, targets, target_size);
+    printf("controller is: \n");
+    for(int &x : controller) printf("%d ", x);
+    printf("\n");
 
 
 
@@ -411,7 +424,7 @@ void Automaton::preProcessSecuritySpec(int* hData, int* hRevData, int* roots, in
                 if(otherSide != -1) {
                     // removing the reverse(otherSide, inputIdx) from the Reverse
                     for(int revOffset = 0; revOffset < MAX_PREDECESSORS; revOffset++) {
-                        int ro = table.getRevOffset(otherSide, inputIdx);
+                        int ro = table.getRevOffset(otherSide, inputIdx, revOffset);
                         if(hRevData[ro] == stateIdx) {hRevData[ro] = -1; break;}
 
                     }
@@ -437,12 +450,12 @@ void Automaton::resolveSecuritySpec(bool* processed,
     for(int i = 0; i < size; i++) {
         int stateIdx = roots[i];
         if(processed[stateIdx]) continue;
-        processed[stateIdx] = false;
+        processed[stateIdx] = true;
 
         // printf("\n[Resolve] Processing state to remove: %d\n", stateIdx);
 
         // Initialize the to_check array.
-        int* toRemove = new int[table.inputCount * table.stateCount];
+        int* toRemove = new int[table.stateCount + 1];
         int toRemoveCount = 0;
 
         for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
@@ -452,7 +465,7 @@ void Automaton::resolveSecuritySpec(bool* processed,
 
                 // printf("[Resolve]   Checking reverse edge: parent=%d via input=%d revSlot=%d\n",
                        // parent, inputIdx, revOffset);
-                if(parent == -1) continue;
+                if(parent == -1 || (parent != -1 && processed[parent])) continue;
 
                 // delete all the transitions (parent, inputIdx)
                 for(int transition = 0; transition < MAX_TRANSITIONS; transition++) {
@@ -472,7 +485,7 @@ void Automaton::resolveSecuritySpec(bool* processed,
                     }
                 }
                 if(toRemoveFlag)
-                    toRemove[toRemoveCount++] = parent, hRevData[table.getRevOffset(stateIdx, inputIdx, revOffset)] = -1; 
+                    toRemove[toRemoveCount++] = parent; 
                 // the parent is should be removed and the state is removed in itself;
             }
         }
@@ -480,4 +493,91 @@ void Automaton::resolveSecuritySpec(bool* processed,
         resolveSecuritySpec(processed, hData, hRevData, toRemove, toRemoveCount);
         delete[] toRemove;
     }
+}
+
+/* resolveReachabilitySpec --> from a startState, how can we reach the targets?
+ * Always call this function after pruning all undesirable states
+ * this takes as input the direct graph and its reverse, the target states we would like to reach.
+ * out represent the series of inputs to provide for the automaton
+ * the algorithm will use Djkstra's algorithm to now what is the minimal distance from a start state and the targets
+ * from that we will consider the target with the least cumulative weight and find the path leading to it.
+ * the weights are represented by default as 1 between nodes with the helper function float table::getDistance(int state, int otherState) but can be changed to any other formula as long as the weights are positive.
+ * */
+std::vector<int> Automaton::resolveReachabilitySpec(int* hData,
+                                        int* hRevData,
+                                        int startState,
+                                        int dimensions, // dimension of state space
+                                        int* targets,
+                                        int target_size)
+{
+    const float INF = 1e30f;
+    // total distance array
+    float *dist = new float[table.stateCount];
+    for(int i = 0; i < table.stateCount; i++) dist[i] = INF;
+
+    // backtracking purposes.
+    int *prevState = new int[table.stateCount];
+    int *prevInput = new int[table.stateCount];
+
+    using P = std::pair<float, int>;
+    std::priority_queue<P, std::vector<P>, std::greater<P>> pq;
+
+    dist[startState] = 0.0f;
+    prevState[startState] = -1; // means we don't have any route to take
+    prevInput[startState] = -1;
+    pq.push({0.0f, startState});
+
+    while(!pq.empty()) {
+        auto [d, currentState] = pq.top();
+        pq.pop();
+        if(d > dist[currentState]) continue;
+
+        // checking the neighbors
+        for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
+            for(int offset = 0; offset < MAX_TRANSITIONS; offset++) {
+              
+                int nextState = hData[table.getOffset(currentState, inputIdx, offset)];
+                if(nextState == -1) continue;
+
+                int newDistance = d + getDistance(currentState, nextState, dimensions);
+
+                if(newDistance < dist[nextState]) {
+                    dist[nextState] = newDistance;
+                    prevState[nextState] = currentState;
+                    prevInput[nextState] = inputIdx;
+                    pq.push({dist[nextState], nextState});
+                }
+            }
+        }
+    }
+    
+
+    // get the least expensive path
+    int bestTarget = -1;
+    float bestDistance = INF;
+    for(int i = 0; i < target_size; i++) {
+        int target = targets[i];
+        if(dist[target] < bestDistance) bestDistance = dist[target], bestTarget = target;
+    }
+
+    // get path from bestTarget to the startState
+    std::vector<int> inputsRev;
+    if (bestTarget == -1) {
+        printf("[ERR] No target reachable\n");
+        return inputsRev;
+    }
+
+    // Step 4: Reconstruct path (backwards)
+    int cur = bestTarget;
+    while (cur != startState && cur != -1) {
+        inputsRev.push_back(prevInput[cur]);
+        cur = prevState[cur];
+    }
+    reverse(inputsRev.begin(), inputsRev.end());
+    return inputsRev;
+
+}
+
+float Automaton::getDistance(int state, int otherState, int dimensions) {
+    return 1.0f;
 }

@@ -24,7 +24,10 @@ public:
 
     void resolveSecuritySpec(bool* processed, int* hData, int* hRevData, int* roots, int size);
 
+    std::vector<int> resolveReachabilitySpec(int* hData, int* hRevData, int startState, int dimensions, int* targets, int target_size);
+
 private:
     TransitionTableHost table;    
     void preProcessSecuritySpec(int* hData, int* hRevData, int* roots, int size);
+    float getDistance(int state, int otherState, int dimension);
 };
