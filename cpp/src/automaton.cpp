@@ -284,6 +284,7 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
 
     cuCtxSynchronize();
+    printf("kernel sala\n");
 
 
     // =============== Cleanup ===============
