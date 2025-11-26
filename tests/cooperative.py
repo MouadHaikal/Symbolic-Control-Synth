@@ -5,7 +5,7 @@ from symControl.model.codePrinter import CodePrinter
 from symControl.bindings import Automaton
 
 
-stateSpace       = DiscreteSpace(2, [(0, 1), (0, 1)], [10, 3])
+stateSpace       = DiscreteSpace(2, [(0, 1), (0, 1)], [10, 10])
 inputSpace       = DiscreteSpace(2, [(-1, 1), (-1, 1)], [3, 5])
 disturbanceSpace = ContinuousSpace(1, [(0.0, 0.05)])
 

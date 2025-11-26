@@ -1,24 +1,22 @@
+from symControl.utils.validation import *
+from symControl.utils.constants import *
 from symControl.space.continuousSpace import ContinuousSpace
 from symControl.space.discreteSpace import DiscreteSpace
 from symControl.model.transitionFunction import TransitionFunction
-from symControl.utils.validation import *
-from symControl.utils.constants import *
+
 
 class Model:
     """
-    Represents the symbolic model obtained from a continuous model.
-
-    This class encapsulates the state space, control space, and disturbance space as instances of the DiscreteSpace class, together with a symbolic transition function represented by a TransitionFunction instance.
-    It currently provides a method for mapping a subset of the state space to the corresponding set of reachable states in the discrete domain.
+    Represents a dynamical system model defined over discrete and continuous spaces,
+    with symbolic transition functions governing its behavior.
 
     Attributes:
-        stateSpace (DiscreteSpace): Represation of the space the model can operate in. 
-        currentState (Cell): the current position in the stateSpace, 
-                             by default it is mapped to the point with coordinates (0,...) as a start state during initalization.
-        transitionFunction (TransitionFunction): the symbolic equations that govern the behavior of the model
+        stateSpace (DiscreteSpace): Defines the discrete state space in which the model operates.
+        transitionFunction (TransitionFunction): Symbolic representation of the system's transition dynamics.
     """
 
-    __slots__ = ['stateSpace', 'currentState', 'transitionFunction']
+    __slots__ = ['stateSpace', 'transitionFunction']
+
     
     def __init__(self,
                  stateSpace: DiscreteSpace,
@@ -33,26 +31,5 @@ class Model:
                                                      controlSpace, 
                                                      disturbanceSpace, 
                                                      timeStep, 
-                                                     equations)
-
-        # Initialization of the currentState: when first created the model is put at position (0,...)
-        startPos = [0 for _ in range(stateSpace.dimensions)]
-        self.currentState = self.stateSpace.getCell(startPos)
-
-    def changeCurrentState(self, coords: Sequence[float]) -> None:
-        """
-        Change the current state of the model after initialization.
-
-        Takes the new coordinates, generates the new cell coordinates and create a cell object for it.
-
-        Args:
-            coords (Sequence[float]): the new coordinates where to put the model.
-
-        Returns:
-            None
-        """
-        validateDimensions(coords, self.stateSpace.dimensions)
-        validatePointBounds(coords, self.stateSpace.bounds)
-
-        cellCoords = self.stateSpace.getCellCoords(coords)
-        self.currentState = self.stateSpace.getCell(cellCoords)
+                                                     equations
+        )
