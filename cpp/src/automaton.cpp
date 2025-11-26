@@ -1,22 +1,13 @@
 #include "automaton.hpp"
+#include "utilsHost.hpp"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cuda.h>
 #include <nvrtc.h>
 #include <cstddef>
 #include <chrono>
-#include <iostream>
 #include <queue>
-
-#define BLOCK_SIZE 512
-
-#define DEBUG
-
-
-// py::scoped_interpreter guard{};
-// py::object DiscreteSpace = py::module_::import("symControl.space.discreteSpace").attr("DiscreteSpace");
-// py::object ContinuousSpace = py::module_::import("symControl.space.discreteSpace").attr("ContinuousSpace"); 
-
 
 
 Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
@@ -27,274 +18,21 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
                      const char* buildAutomatonCode)
     : table(stateSpace.attr("cellCount").cast<size_t>(), inputSpace.attr("cellCount").cast<size_t>())
 { 
-    // py::scoped_interpreter guard{};
-    if (stateSpace.attr("dimensions").cast<int>() > MAX_DIMENSIONS) {
-        printf("Error: State space dimensions (%d) > MAX_DIMENSIONS (%d) (at %s)\n", 
-               stateSpace.attr("dimensions").cast<int>(), 
-               MAX_DIMENSIONS,
-               __FILE__
-        );
+    validateDimension(stateSpace);
+    validateDimension(inputSpace);
+    validateDimension(disturbanceSpace);
 
-        exit(EXIT_FAILURE);
-    }
+    CudaCompilationContext compilationContext{buildAutomatonCode, isCooperative};
 
-#ifdef DEBUG
-    // freopen("debug.out", "w", stdout);
-#endif
-
-    // =============== Compile Program ===============
-    nvrtcProgram prog;
-    nvrtcCreateProgram(&prog,
-                       buildAutomatonCode,
-                       "buildAutomaton.cu",
-                       0,
-                       NULL,
-                       NULL);
-
-    std::vector<std::string> options;
-    std::stringstream ss(CUDA_INCLUDE_DIRS);
-    std::string path;
-    while(ss >> path) options.push_back("--include-path=" + path);
-    std::vector<const char*> opt_cstr;
-    for(auto& s : options) opt_cstr.push_back(s.c_str());
-
-    nvrtcResult compileResult = nvrtcCompileProgram(prog, opt_cstr.size(), opt_cstr.data());
-
-
-
-    // =============== Get Compilation Log ===============
-    if (compileResult != NVRTC_SUCCESS) {
-        size_t logSize;
-        nvrtcGetProgramLogSize(prog, &logSize);
-        if (logSize > 1) {
-            char *log = new char[logSize];
-            nvrtcGetProgramLog(prog, log);
-            std::cerr << "Compilation failed:\n" << log << std::endl;
-            delete[] log;
-        } else {
-            std::cerr << "Compilation failed but log is empty." << std::endl;
-        }
-    } else {
-        std::cout << "Compilation succeeded." << std::endl;
-    }
-
-    // Get PTX from the program.
-    size_t ptxSize;
-    nvrtcGetPTXSize(prog, &ptxSize);
-    char *ptx = new char[ptxSize];
-    nvrtcGetPTX(prog, ptx);
-
-
-    // =============== Get Kernel Handle ===============
-    CUdevice cuDevice;
-    CUcontext context;
-    CUmodule module;
-    CUfunction buildAutomaton;
-
-    cuInit(0);
-    cuDeviceGet(&cuDevice, 0);
-    cuCtxCreate(&context, NULL, 0, cuDevice);
-    cuModuleLoadDataEx(&module, ptx, 0, 0, 0);
-    cuModuleGetFunction(&buildAutomaton, 
-                        module, 
-                        (isCooperative ? "buildAutomatonCoop": "buildAutomatonNonCoop")
+    compilationContext.launchKernel(stateSpace, 
+                                    inputSpace, 
+                                    disturbanceSpace, 
+                                    maxDisturbJac, 
+                                    table
     );
 
+    compilationContext.cleanup();
 
-
-
-    // =============== Call Kernel ===============
-    // stateSpaceInfo creation
-    int stateDimensions = stateSpace.attr("dimensions").cast<int>();
-    float stateLowerBound[stateDimensions];
-    float stateUpperBound[stateDimensions];
-    int stateResolutions[stateDimensions];
-    float stateCellSize[stateDimensions];
-    int stateCellCount = stateSpace.attr("cellCount").cast<int>();
-    {
-        py::tuple pyStateBounds = stateSpace.attr("bounds").cast<py::tuple>();
-        for(int i = 0; i < stateDimensions; i++) {
-            py::tuple inner = pyStateBounds[i].cast<py::tuple>();
-            stateLowerBound[i] = inner[0].cast<float>();
-            stateUpperBound[i] = inner[1].cast<float>();
-        }
-        py::tuple pyStateResolutions = stateSpace.attr("resolutions").cast<py::tuple>();
-        for(int i = 0; i < stateDimensions; i++) {
-            stateResolutions[i] = pyStateResolutions[i].cast<int>();
-        }
-        py::tuple pyStateCellSize = stateSpace.attr("cellSize").cast<py::tuple>();
-        for(int i = 0; i < stateDimensions; i++) {
-            stateCellSize[i] = pyStateCellSize[i].cast<float>();
-        }
-    }
-    SpaceInfoHost stateSpaceInfoHost {
-        stateDimensions,
-        stateLowerBound,
-        stateUpperBound,
-        stateResolutions,
-        stateCellSize,
-        stateCellCount
-    };
-    SpaceInfoDevice stateSpaceInfoDevice {
-        stateSpaceInfoHost.dimensions,
-        stateSpaceInfoHost.dLowerBound,
-        stateSpaceInfoHost.dUpperBound,
-        stateSpaceInfoHost.dCellSize,
-        stateSpaceInfoHost.dResolutions,
-        stateSpaceInfoHost.cellCount
-    };
-
-
-    // inputSpaceInfo creation
-    int inputDimensions = inputSpace.attr("dimensions").cast<int>();
-    float inputLowerBound[inputDimensions];
-    float inputUpperBound[inputDimensions];
-    int inputResolutions[inputDimensions];
-    float inputCellSize[inputDimensions];
-    int inputCellCount = inputSpace.attr("cellCount").cast<int>();
-    {
-        py::tuple pyInputBounds = inputSpace.attr("bounds").cast<py::tuple>();
-        for(int i = 0; i < inputDimensions; i++) {
-            py::tuple inner = pyInputBounds[i].cast<py::tuple>();
-            inputLowerBound[i] = inner[0].cast<float>();
-            inputUpperBound[i] = inner[1].cast<float>();
-        }
-        py::tuple pyInputResolutions = inputSpace.attr("resolutions").cast<py::tuple>();
-        for(int i = 0; i < inputDimensions; i++) {
-            inputResolutions[i] = pyInputResolutions[i].cast<int>();
-        }
-        py::tuple pyInputCellSize = inputSpace.attr("cellSize").cast<py::tuple>();
-        for(int i = 0; i < inputDimensions; i++) {
-            inputCellSize[i] = pyInputCellSize[i].cast<float>();
-        }
-    }
-    SpaceInfoHost inputSpaceInfoHost {
-        inputDimensions,
-        inputLowerBound,
-        inputUpperBound,
-        inputResolutions,
-        inputCellSize,
-        inputCellCount
-    };
-    SpaceInfoDevice inputSpaceInfoDevice {
-        inputSpaceInfoHost.dimensions,
-        inputSpaceInfoHost.dLowerBound,
-        inputSpaceInfoHost.dUpperBound,
-        inputSpaceInfoHost.dCellSize,
-        inputSpaceInfoHost.dResolutions,
-        inputSpaceInfoHost.cellCount
-    };
-
-    // disturbanceSpaceBound creation
-    int disturbanceDimensions = disturbanceSpace.attr("dimensions").cast<int>();
-    float disturbanceLowerBound[disturbanceDimensions];
-    float disturbanceUpperBound[disturbanceDimensions];
-    float disturbanceCenter[disturbanceDimensions];
-    {
-        py::tuple pyDisturbanceBounds = disturbanceSpace.attr("bounds").cast<py::tuple>();
-        for(int i = 0; i < disturbanceDimensions; i++) {
-            py::tuple inner = pyDisturbanceBounds[i].cast<py::tuple>();
-            float lower = inner[0].cast<float>();
-            float upper = inner[1].cast<float>();
-            disturbanceLowerBound[i] = lower;
-            disturbanceUpperBound[i] = upper;
-            disturbanceCenter[i] = (lower + upper) / 2.0;
-        }
-    }
-    SpaceBoundsHost disturbanceSpaceBoundsHost {
-        disturbanceDimensions,
-        disturbanceLowerBound,
-        disturbanceUpperBound,
-        disturbanceCenter
-    };
-    SpaceBoundsDevice disturbanceSpaceBoundsDevice {
-        disturbanceSpaceBoundsHost.dimensions,
-        disturbanceSpaceBoundsHost.dLowerBound,
-        disturbanceSpaceBoundsHost.dUpperBound,
-        disturbanceSpaceBoundsHost.dCenter
-    };
-
-
-    TransitionTableDevice tableDevice{
-        table.dData,
-        table.dRevData,
-        table.dTransitionLocks,
-        table.stateCount,
-        table.inputCount
-    };
-
-
-    CUresult resKernelLaunch;
-    if (isCooperative) {
-        void *args[] =  {
-            &stateSpaceInfoDevice,
-            &inputSpaceInfoDevice,
-            &disturbanceSpaceBoundsDevice,
-            &tableDevice
-        };
-
-        resKernelLaunch = cuLaunchKernel(buildAutomaton,
-                                         (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
-                                         BLOCK_SIZE, 1, 1,
-                                         0, NULL,
-                                         args,
-                                         0
-        );
-    }
-    else {
-        float hMaxDisturbJac[stateDimensions*disturbanceDimensions]; 
-
-        for(int i = 0; i < stateDimensions; i++) {
-            py::tuple row = maxDisturbJac[i].cast<py::tuple>();
-            for (int j = 0; j < disturbanceDimensions; j++) {
-                hMaxDisturbJac[i*disturbanceDimensions + j] = row[j].cast<float>();
-            }
-        }
-
-        float* dMaxDisturbJac;
-        cudaMalloc(&dMaxDisturbJac, stateDimensions * disturbanceDimensions * sizeof(float));
-        cudaMemcpy(dMaxDisturbJac, hMaxDisturbJac, stateDimensions * disturbanceDimensions * sizeof(float), cudaMemcpyHostToDevice);
-
-
-        void *args[] =  {
-            &stateSpaceInfoDevice,
-            &inputSpaceInfoDevice,
-            &disturbanceSpaceBoundsDevice,
-            &dMaxDisturbJac,
-            &tableDevice
-        };
-
-
-        resKernelLaunch = cuLaunchKernel(buildAutomaton,
-                                         (int)std::ceil((float)stateCellCount / BLOCK_SIZE), 1, 1,
-                                         BLOCK_SIZE, 1, 1,
-                                         0, NULL,
-                                         args,
-                                         0
-        );
-    }
-
-    if (resKernelLaunch != CUDA_SUCCESS) {
-        const char *errorName = nullptr;
-        cuGetErrorName(resKernelLaunch, &errorName);
-        printf("cuLaunchKernel failed: %s\n", errorName);
-    }
-    else {
-        printf("cuLaunchKernel succeeded.\n");
-    }
-
-
-    cuCtxSynchronize();
-    printf("Kenel sala\n");
-
-
-    // =============== Cleanup ===============
-    nvrtcDestroyProgram(&prog);
-    cuModuleUnload(module);
-    cuCtxDestroy(context);
-
-
-    // =============== Applying Specifications ===============
     printf("Applying security specification\n");
     auto start = std::chrono::high_resolution_clock::now();
     int* hData = new int[table.stateCount * table.inputCount * MAX_TRANSITIONS];
@@ -316,8 +54,8 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
     for(int i = 0; i < table.stateCount; i++) processed[i] = false;
 
-    int roots[6] = {5, 6, 100, 150, 200, 250};
-    int size = 6;
+    int roots[2] = {5, 6};
+    int size = 2;
     resolveSecuritySpec(processed, hData, hRevData, roots, size);
 
 
@@ -329,10 +67,10 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     printf("Applying reachibility specification\n");
     int startState = 0;
     int dimensions = 2;
-    int targets[3] = {1204, 1206, 1207};
+    int targets[3] = {0, 1, 2};
     int target_size = 3;
 
-    std::vector<int> controller = resolveReachabilitySpec(hData, hRevData, startState, dimensions, targets, target_size);
+    std::vector<int> controller = getController(hData, hRevData, startState, dimensions, targets, target_size);
     printf("controller is: \n");
     for(int &x : controller) printf("%d ", x);
     printf("\n");
@@ -341,7 +79,6 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
 
     // =============== Testing ===============
-#ifdef DEBUG
     printf("=== Combined Direct + Reverse Table ===\n");
 
 
@@ -395,7 +132,6 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
     printf("\n=== End Combined Table ===\n");
 
-#endif
     // ============== Cleanup ================
     delete[] hData;
     delete[] hRevData;
@@ -416,21 +152,21 @@ void Automaton::preProcessSecuritySpec(int* hData, int* hRevData, int* roots, in
 
             for(int offset = 0; offset < MAX_TRANSITIONS; offset++) {
 
-                int off = table.getOffset(stateIdx, inputIdx, offset);
+                int globalOffset = table.getOffset(stateIdx, inputIdx, offset);
 
                 // printf("    [Preprocess]   setting hData[%d] = -1\n", off);
 
-                int otherSide = hData[off];
+                int otherSide = hData[globalOffset];
                 if(otherSide != -1) {
                     // removing the reverse(otherSide, inputIdx) from the Reverse
                     for(int revOffset = 0; revOffset < MAX_PREDECESSORS; revOffset++) {
-                        int ro = table.getRevOffset(otherSide, inputIdx, revOffset);
-                        if(hRevData[ro] == stateIdx) {hRevData[ro] = -1; break;}
+                        int globalRevOffset = table.getRevOffset(otherSide, inputIdx, revOffset);
+                        if(hRevData[globalRevOffset] == stateIdx) {hRevData[globalRevOffset] = -1; break;}
 
                     }
                 }
 
-                hData[off] = -1;
+                hData[globalOffset] = -1;
             }
         }
     }
@@ -472,6 +208,7 @@ void Automaton::resolveSecuritySpec(bool* processed,
                     // printf("    [Delete]   Removing (parent=%d, input=%d) transition slot %d\n",
                            // parent, inputIdx, transition);
                     hData[table.getOffset(parent, inputIdx, transition)] = -1;
+                    // TODO: check if the transitions removed should also be removed from hRevData
                 }
                 hRevData[table.getRevOffset(stateIdx, inputIdx, revOffset)] = -1;
 
@@ -503,7 +240,7 @@ void Automaton::resolveSecuritySpec(bool* processed,
  * from that we will consider the target with the least cumulative weight and find the path leading to it.
  * the weights are represented by default as 1 between nodes with the helper function float table::getDistance(int state, int otherState) but can be changed to any other formula as long as the weights are positive.
  * */
-std::vector<int> Automaton::resolveReachabilitySpec(int* hData,
+std::vector<int> Automaton::getController(int* hData,
                                         int* hRevData,
                                         int startState,
                                         int dimensions, // dimension of state space
@@ -581,3 +318,17 @@ std::vector<int> Automaton::resolveReachabilitySpec(int* hData,
 float Automaton::getDistance(int state, int otherState, int dimensions) {
     return 1.0f;
 }
+
+
+inline void Automaton::validateDimension(const py::object& space) {
+    if (space.attr("dimensions").cast<int>() > MAX_DIMENSIONS) {
+        printf("Error: Space dimensions (%d) > MAX_DIMENSIONS (%d) (at %s)\n", 
+               space.attr("dimensions").cast<int>(), 
+               MAX_DIMENSIONS,
+               __FILE__
+        );
+
+        exit(EXIT_FAILURE);
+    }
+}
+

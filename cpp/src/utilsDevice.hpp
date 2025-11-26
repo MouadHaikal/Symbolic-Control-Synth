@@ -11,11 +11,11 @@ struct SpaceBoundsDevice{
 
 struct SpaceInfoDevice{
     int    dimensions;
+    int    cellCount;
     float* dLowerBound;
     float* dUpperBound;
     float* dCellSize;
     int*   dResolutions;
-    int    cellCount;
     
     __device__ __forceinline__
     void getCellBounds(int cellIdx, float* cellLowerBound, float* cellUpperBound) const {
