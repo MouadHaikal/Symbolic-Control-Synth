@@ -135,9 +135,12 @@ std::vector<int> Automaton::getController(int startState,
                 int nextState = table.hData[table.getOffset(currentState, inputIdx, offset)];
                 if(nextState == -1) continue;
 
-                int newDistance = d + getDistance(currentState, nextState, dimensions);
+                // int newDistance = d + getDistance(currentState, nextState, dimensions);
+                // TODO:: compute newDistance with an online distance function
+                int newDistance = d + 1.0;
 
-                if(newDistance < dist[nextState] && table.safeCounts[currentState][inputIdx] == table.transCounts[currentState][inputIdx]) {
+
+                if(newDistance < dist[nextState] && table.safeCounts[table.getPosition(currentState, inputIdx)] == table.transCounts[table.getPosition(currentState, inputIdx)]) {
                     dist[nextState] = newDistance;
                     prevState[nextState] = currentState;
                     prevInput[nextState] = inputIdx;
@@ -151,8 +154,7 @@ std::vector<int> Automaton::getController(int startState,
     // get the least expensive path
     int bestTarget = -1;
     float bestDistance = INF;
-    for(int i = 0; i < target_size; i++) {
-        int target = targets[i];
+    for(int target : table.safeStates) {
         if(dist[target] < bestDistance) bestDistance = dist[target], bestTarget = target;
     }
 
@@ -200,7 +202,7 @@ void Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBound, py::tuple py
             for(int revOffset = table.getRevOffset(stateIdx,inputIdx) , _=0; _<MAX_PREDECESSORS; _++, revOffset++){
                 int predIdx = table.hRevData[revOffset];
                 if(predIdx != -1 && !table.safeStates.count(predIdx)){
-                    if (++table.safeCounts[predIdx][inputIdx] == table.transCounts[predIdx][inputIdx])
+                    if (++table.safeCounts[table.getPosition(predIdx, inputIdx)] == table.transCounts[table.getPosition(predIdx, inputIdx)])
                         pendingStates.push(predIdx);
                 }
             }

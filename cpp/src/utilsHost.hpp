@@ -141,8 +141,8 @@ struct TransitionTableHost{
         cudaMalloc(&dTransitionLocks, stateCount * inputCount * sizeof(int));
         cudaMemset(dTransitionLocks, 0, stateCount * inputCount * sizeof(int));
 
-        transCounts = new int[stateCount][inputCount];
-        safeCounts = new int[stateCount][inputCount];
+        transCounts = new int[stateCount * inputCount];
+        safeCounts = new int[stateCount * inputCount];
         precomputeTransitions();
 
     }
@@ -173,15 +173,19 @@ struct TransitionTableHost{
     void precomputeTransitions(){
         for(int stateIdx = 0; stateIdx < stateCount; stateIdx++){
             for(int inputIdx = 0; inputIdx < inputCount; inputIdx++){
-                safeCounts[stateIdx][inputIdx] = 0;
+                safeCounts[getPosition(stateIdx, inputIdx)] = 0;
                 int tot = 0;
                 for(int i = 0; i<MAX_TRANSITIONS; i++){
                     if(get(stateIdx,inputIdx,i) != -1) tot++;
                 
                 }
-                transCounts[stateIdx][inputIdx] = tot;
+                transCounts[getPosition(stateIdx, inputIdx)] = tot;
             }
         }
+    }
+
+    int getPosition(int stateIdx, int inputIdx) {
+        return stateIdx * inputCount + inputIdx;
     }
 
     int getOffset(int stateIdx, int inputIdx, int transition = 0) const {
