@@ -6,7 +6,6 @@
 #include <cuda.h>
 #include <nvrtc.h>
 #include <cstddef>
-#include <chrono>
 #include <queue>
 
 
@@ -38,7 +37,7 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
     resolutionStride.reserve(stateDim);
     resolutionStride[0] = 1;
-    py::tuple pyResolutions = space.attr("resolutions").cast<py::tuple>();
+    py::tuple pyResolutions = stateSpace.attr("resolutions").cast<py::tuple>();
     for (int i = 1; i < stateDim; ++i)
         resolutionStride[i] = pyResolutions[i-1].cast<int>() * resolutionStride[i-1];
 
@@ -48,7 +47,7 @@ Automaton::~Automaton() {
 
 }
 
-void Automaton:applySecuritySpec(py::tuple pyObstacleLowerBound, py::tuple pyObstacleUpperBound){
+void Automaton::applySecuritySpec(py::tuple pyObstacleLowerBound, py::tuple pyObstacleUpperBound){
     std::vector<int> obstacleLowerBound = std::vector<int>(stateDim);
     std::vector<int> obstacleUpperBound = std::vector<int>(stateDim);
 
@@ -65,11 +64,11 @@ void Automaton:applySecuritySpec(py::tuple pyObstacleLowerBound, py::tuple pyObs
 
 void Automaton::removeUnsafeStates(const std::vector<int>& obstacleCells){
     std::queue<int> toRemove;
-    for(const int idx : obsatcleCells) {
+    for(const int idx : obstacleCells) {
         toRemove.push(idx);
     }
     while(!toRemove.empty()) {
-        int stateIdx = toRemove.top();
+        int stateIdx = toRemove.front();
         toRemove.pop();
         for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
             for(int revOff = table.getOffset(stateIdx, inputIdx), _ = 0; _ < MAX_PREDECESSORS; _++, revOff++) {
@@ -177,6 +176,11 @@ std::vector<int> Automaton::getController(int* hData,
 
 }
 
+// TODO: andirouh db
+void Automaton::applyReachabilitySpec(py::object targetBounds) {
+    return;
+}
+
 float Automaton::getDistance(int state, int otherState, int dimensions) {
     return 1.0f;
 }
@@ -221,5 +225,5 @@ std::vector<int> Automaton::floodFill(const std::vector<int>&  lowerBoundCoords,
         if (d >= stateDim) break;
     }
 
-    return out
+    return out;
 }
