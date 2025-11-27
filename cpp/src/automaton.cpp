@@ -16,7 +16,8 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
                      bool isCooperative,
                      py::tuple maxDisturbJac,
                      const char* buildAutomatonCode)
-    : table(stateSpace.attr("cellCount").cast<size_t>(), inputSpace.attr("cellCount").cast<size_t>())
+    : table(stateSpace.attr("cellCount").cast<size_t>(), inputSpace.attr("cellCount").cast<size_t>()),
+        stateDim(stateSpace.attr("dimensions").cast<int>())
 { 
     validateDimension(stateSpace);
     validateDimension(inputSpace);
@@ -33,204 +34,65 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
 
     compilationContext.cleanup();
 
-    printf("Applying security specification\n");
-    auto start = std::chrono::high_resolution_clock::now();
-    int* hData = new int[table.stateCount * table.inputCount * MAX_TRANSITIONS];
-    int* hRevData = new int[table.stateCount * table.inputCount * MAX_PREDECESSORS];
-    bool* processed = new bool[table.stateCount];
-    // processed[i] = false means it isn't processed yet.
-    // processed[i] = true means it is processed
-    // at the end of the algorithm all the nodes (marked true) are considered removed from the transition table of the automaton.
+    table.syncDeviceData();
 
-    cudaMemcpy(hData, 
-               table.dData, 
-               table.stateCount * table.inputCount * MAX_TRANSITIONS * sizeof(int), 
-               cudaMemcpyDeviceToHost);
+    resolutionStride.reserve(stateDim);
+    resolutionStride[0] = 1;
+    py::tuple pyResolutions = space.attr("resolutions").cast<py::tuple>();
+    for (int i = 1; i < stateDim; ++i)
+        resolutionStride[i] = pyResolutions[i-1].cast<int>() * resolutionStride[i-1];
 
-    cudaMemcpy(hRevData, 
-               table.dRevData, 
-               table.stateCount * table.inputCount * MAX_PREDECESSORS * sizeof(int), 
-               cudaMemcpyDeviceToHost);
-
-    for(int i = 0; i < table.stateCount; i++) processed[i] = false;
-
-    int roots[2] = {5, 6};
-    int size = 2;
-    resolveSecuritySpec(processed, hData, hRevData, roots, size);
-
-
-
-    auto end = std::chrono::high_resolution_clock::now();
-    double ms = std::chrono::duration<double, std::milli>(end - start).count();
-    printf("Time to apply security specification: %.5f ms.\n", ms);
-
-    printf("Applying reachibility specification\n");
-    int startState = 0;
-    int dimensions = 2;
-    int targets[3] = {0, 1, 2};
-    int target_size = 3;
-
-    std::vector<int> controller = getController(hData, hRevData, startState, dimensions, targets, target_size);
-    printf("controller is: \n");
-    for(int &x : controller) printf("%d ", x);
-    printf("\n");
-
-
-
-
-    // =============== Testing ===============
-    printf("=== Combined Direct + Reverse Table ===\n");
-
-
-    for (int s = 0; s < table.stateCount; s++) {
-        for (int u = 0; u < table.inputCount; u++) {
-
-            printf("\n==============================\n");
-            printf("     State %d | Input %d\n", s, u);
-            printf("==============================\n");
-
-            int baseDir = (s * table.inputCount + u) * MAX_TRANSITIONS;
-            int baseRev = (s * table.inputCount + u) * MAX_PREDECESSORS;
-
-            // ---- DIRECT ----
-            printf("Direct : ");
-            bool dirEmpty = true;
-            for (int t = 0; t < MAX_TRANSITIONS; t++) {
-                int v = hData[baseDir + t];
-                if (v != -1) dirEmpty = false;
-            }
-            if (dirEmpty) {
-                printf("[ none ]\n");
-            } else {
-                for (int t = 0; t < MAX_TRANSITIONS; t++) {
-                    int v = hData[baseDir + t];
-                    if (v != -1) printf("%d ", v);
-                }
-                printf("\n");
-            }
-
-            // ---- REVERSE ----
-            printf("Reverse: ");
-            bool revEmpty = true;
-            for (int p = 0; p < MAX_PREDECESSORS; p++) {
-                int v = hRevData[baseRev + p];
-                if (v != -1) revEmpty = false;
-            }
-            if (revEmpty) {
-                printf("[ none ]\n");
-            } else {
-                for (int p = 0; p < MAX_PREDECESSORS; p++) {
-                    int v = hRevData[baseRev + p];
-                    if (v != -1) printf("%d ", v);
-                }
-                printf("\n");
-            }
-
-            printf("-----------------------------------\n");
-        }
-    }
-
-    printf("\n=== End Combined Table ===\n");
-
-    // ============== Cleanup ================
-    delete[] hData;
-    delete[] hRevData;
-    delete[] processed;
 }
 
 Automaton::~Automaton() {
 
 }
 
-void Automaton::preProcessSecuritySpec(int* hData, int* hRevData, int* roots, int size) {
-    for(int i = 0; i < size; i++) {
-        int stateIdx = roots[i];
-        // remove the root from the graph
-        for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
-            // printf("[Preprocess] Removing outgoing transitions from root %d on input %d\n",
-               // stateIdx, inputIdx);    
+void Automaton:applySecuritySpec(py::tuple pyObstacleLowerBound, py::tuple pyObstacleUpperBound){
+    std::vector<int> obstacleLowerBound = std::vector<int>(stateDim);
+    std::vector<int> obstacleUpperBound = std::vector<int>(stateDim);
 
-            for(int offset = 0; offset < MAX_TRANSITIONS; offset++) {
-
-                int globalOffset = table.getOffset(stateIdx, inputIdx, offset);
-
-                // printf("    [Preprocess]   setting hData[%d] = -1\n", off);
-
-                int otherSide = hData[globalOffset];
-                if(otherSide != -1) {
-                    // removing the reverse(otherSide, inputIdx) from the Reverse
-                    for(int revOffset = 0; revOffset < MAX_PREDECESSORS; revOffset++) {
-                        int globalRevOffset = table.getRevOffset(otherSide, inputIdx, revOffset);
-                        if(hRevData[globalRevOffset] == stateIdx) {hRevData[globalRevOffset] = -1; break;}
-
-                    }
-                }
-
-                hData[globalOffset] = -1;
-            }
-        }
+    for(int dim = 0; dim < stateDim; dim++){
+        obstacleLowerBound[dim] = pyObstacleLowerBound[dim].cast<int>();
+        obstacleUpperBound[dim] = pyObstacleUpperBound[dim].cast<int>();
     }
-    return;
+    std::vector<int> obstacleCells = floodFill(obstacleLowerBound, obstacleUpperBound);
+    removeUnsafeStates(obstacleCells);
+
+
 }
 
-void Automaton::resolveSecuritySpec(bool* processed,
-                                    int* hData,
-                                    int* hRevData,
-                                    int* roots, // vector of the roots array to be removed
-                                    int size) // size of the roots array
-{
-    if(size <= 0) return; // nothing to remove
 
-    preProcessSecuritySpec(hData, hRevData, roots, size);
-
-    for(int i = 0; i < size; i++) {
-        int stateIdx = roots[i];
-        if(processed[stateIdx]) continue;
-        processed[stateIdx] = true;
-
-        // printf("\n[Resolve] Processing state to remove: %d\n", stateIdx);
-
-        // Initialize the to_check array.
-        int* toRemove = new int[table.stateCount + 1];
-        int toRemoveCount = 0;
-
+void Automaton::removeUnsafeStates(const std::vector<int>& obstacleCells){
+    std::queue<int> toRemove;
+    for(const int idx : obsatcleCells) {
+        toRemove.push(idx);
+    }
+    while(!toRemove.empty()) {
+        int stateIdx = toRemove.top();
+        toRemove.pop();
         for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
-            for(int revOffset = 0; revOffset < MAX_PREDECESSORS; revOffset++) {
-
-                int parent = hRevData[table.getRevOffset(stateIdx, inputIdx, revOffset)];
-
-                // printf("[Resolve]   Checking reverse edge: parent=%d via input=%d revSlot=%d\n",
-                       // parent, inputIdx, revOffset);
-                if(parent == -1 || (parent != -1 && processed[parent])) continue;
-
-                // delete all the transitions (parent, inputIdx)
-                for(int transition = 0; transition < MAX_TRANSITIONS; transition++) {
-                    // printf("    [Delete]   Removing (parent=%d, input=%d) transition slot %d\n",
-                           // parent, inputIdx, transition);
-                    hData[table.getOffset(parent, inputIdx, transition)] = -1;
-                    // TODO: check if the transitions removed should also be removed from hRevData
-                }
-                hRevData[table.getRevOffset(stateIdx, inputIdx, revOffset)] = -1;
-
-                // we need to check if the parent still has any outgoing edges
+            for(int revOff = table.getOffset(stateIdx, inputIdx), _ = 0; _ < MAX_PREDECESSORS; _++, revOff++) {
+                int parIdx = table.hRevData[revOff]; 
+                if(parIdx == -1) continue;
+                table.removeTransitions(parIdx, inputIdx);
+                
                 bool toRemoveFlag = true;
-                for(int parentInputIdx = 0; parentInputIdx < table.inputCount && toRemoveFlag; parentInputIdx++) {
-                    for(int parentOffset = 0; parentOffset < MAX_TRANSITIONS && toRemoveFlag; parentOffset++) {
-                        if(hData[table.getOffset(parent, parentInputIdx, parentOffset)] != -1) {
-                            toRemoveFlag = false;
-                        }
+                for(int i = table.getOffset(parIdx, 0), _ = 0; _ < table.inputCount*MAX_TRANSITIONS && toRemoveFlag; _++, i++) {
+                    if(table.hData[i] != -1) {
+                        toRemoveFlag = false;
                     }
                 }
-                if(toRemoveFlag)
-                    toRemove[toRemoveCount++] = parent; 
-                // the parent is should be removed and the state is removed in itself;
+
+                if(toRemoveFlag) {
+                    toRemove.push(parIdx);
+                }
             }
         }
-
-        resolveSecuritySpec(processed, hData, hRevData, toRemove, toRemoveCount);
-        delete[] toRemove;
     }
+    
 }
+
 
 /* resolveReachabilitySpec --> from a startState, how can we reach the targets?
  * Always call this function after pruning all undesirable states
@@ -332,3 +194,32 @@ inline void Automaton::validateDimension(const py::object& space) {
     }
 }
 
+std::vector<int> Automaton::floodFill(const std::vector<int>&  lowerBoundCoords, const std::vector<int>&  upperBoundCoords){
+    std::vector<int> curCoords{stateDim};
+    for (int i = 0; i < stateDim; ++i) 
+        curCoords[i] = lowerBoundCoords[i];
+
+    std::vector<int> out;
+
+    while (true) {
+        int cellIdx = 0;
+        for (int i = 0; i < stateDim; ++i) 
+            cellIdx += curCoords[i] * resolutionStride[i];
+        
+        out.push_back(cellIdx);
+        
+        int d = 0;
+        while (d <= stateDim - 1) {
+            curCoords[d]++;
+
+            if (curCoords[d] <= upperBoundCoords[d]) break;
+
+            curCoords[d] = lowerBoundCoords[d];
+            d++;
+        }
+
+        if (d >= stateDim) break;
+    }
+
+    return out
+}

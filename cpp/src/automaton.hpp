@@ -22,16 +22,22 @@ public:
     ~Automaton();
 
 
-    void applySecuritySpec(py::object obstacles);
-    void applyReachabilitySpec(py::object goal);
+    void applySecuritySpec(py::tuple pyObstacleLowerBound, py::tuple pyObstacleUpperBound);
+    void applyReachabilitySpec(py::object targetBounds);
 
-
-    void resolveSecuritySpec(bool* processed, int* hData, int* hRevData, int* roots, int size);
-    std::vector<int> getController(int* hData, int* hRevData, int startState, int dimensions, int* targets, int target_size);
-
+    
 private:
-    TransitionTableHost table;    
-    void preProcessSecuritySpec(int* hData, int* hRevData, int* roots, int size);
+    TransitionTableHost table;
+    const int stateDim;
+    std::vector<int> resolutionStride;
+    
+private:
+    void removeUnsafeStates(const std::vector<int>& obstacleCells);
+
+    std::vector<int> getController(int* hData, int* hRevData, int startState, int dimensions, int* targets, int target_size);
     float getDistance(int state, int otherState, int dimension);
+
+    std::vector<int> floodFill(const std::vector<int>&  lowerBoundCoords, const std::vector<int>&  upperBoundCoords);
     inline void validateDimension(const py::object& space);
+
 };

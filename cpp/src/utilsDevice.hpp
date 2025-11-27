@@ -1,3 +1,5 @@
+#pragma once
+
 #include "constants.hpp"
 #include <cuda_runtime.h>
 

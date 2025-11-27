@@ -182,13 +182,16 @@ __floodFillCodeTemplate="""\
                    int*       __restrict__ out)
     {{
         int curCoords[MAX_DIMENSIONS];
-        for (int i = 0; i < dimensions; ++i) curCoords[i] = lowerBoundCoords[i];
+        for (int i = 0; i < dimensions; ++i) 
+            curCoords[i] = lowerBoundCoords[i];
 
         int curTransition = 0;
 
         while (true) {{
             int cellIdx = 0;
-            for (int i = 0; i < dimensions; ++i) cellIdx += curCoords[i] * resolutionStride[i];
+            for (int i = 0; i < dimensions; ++i) 
+                cellIdx += curCoords[i] * resolutionStride[i];
+                
             out[curTransition++] = cellIdx;
             
             int d = 0;

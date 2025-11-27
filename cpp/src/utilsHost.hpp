@@ -112,7 +112,9 @@ struct SpaceInfoHost{
 
 struct TransitionTableHost{
     int*         dData;
+    int*         hData;
     int*         dRevData;
+    int*         hRevData;
     int*         dTransitionLocks;
     const size_t stateCount;
     const size_t inputCount;
@@ -124,10 +126,12 @@ struct TransitionTableHost{
         size_t size = stateCount * inputCount * MAX_TRANSITIONS * sizeof(int);
         cudaMalloc(&dData, size);
         cudaMemset(dData, EMPTY_CELL, size);
+        hData = new int[size/sizeof(int)];
 
         size_t sizeRev = stateCount * inputCount * MAX_PREDECESSORS * sizeof(int);
         cudaMalloc(&dRevData, sizeRev);
         cudaMemset(dRevData, EMPTY_CELL, sizeRev);
+        hRevData = new int[sizeRev/sizeof(int)];
 
         cudaMalloc(&dTransitionLocks, stateCount * inputCount * sizeof(int));
         cudaMemset(dTransitionLocks, 0, stateCount * inputCount * sizeof(int));
@@ -136,6 +140,22 @@ struct TransitionTableHost{
     ~TransitionTableHost() {
         cudaFree(dData);
         cudaFree(dRevData);
+        delete[] hData;
+        delete[] hRevData;
+    }
+
+    void syncDeviceData() {
+        cudaMemcpy(hData,
+                   dData,
+                   stateCount * inputCount * MAX_TRANSITIONS * sizeof(int),
+                   cudaMemcpyDeviceToHost
+        );
+
+        cudaMemcpy(hRevData,
+                   dRevData,
+                   stateCount * inputCount * MAX_PREDECESSORS * sizeof(int),
+                   cudaMemcpyDeviceToHost
+        );
     }
 
     int getOffset(int stateIdx, int inputIdx, int transition = 0) const {
@@ -147,6 +167,34 @@ struct TransitionTableHost{
         return stateIdx * (inputCount * MAX_PREDECESSORS) + 
         inputIdx * MAX_PREDECESSORS + 
         predecessor;
+    }
+
+    void set(int stateIdx, int inputIdx, int transition, int val) {
+        hData[getOffset(stateIdx, inputIdx, transition)] = val;
+    }
+    void setRev(int stateIdx, int inputIdx, int predecessor, int val) {
+        hRevData[getRevOffset(stateIdx, inputIdx, predecessor)] = val;
+    }
+    int get(int stateIdx, int inputIdx, int transition) const {
+        return hData[getOffset(stateIdx, inputIdx, transition)];
+    }
+    int getRev(int stateIdx, int inputIdx, int predecessor) const {
+        return hRevData[getRevOffset(stateIdx, inputIdx, predecessor)];
+    }
+
+    void removeTransitions(int stateIdx, int inputIdx) {
+        for(int off = getOffset(stateIdx, inputIdx), _ = 0; _ < MAX_TRANSITIONS; _++, off++) {
+            int dstIdx = hData[off];
+            if(dstIdx == -1) continue;
+            hData[off] = -1;
+
+            for(int revOff = getOffset(stateIdx, inputIdx), _ = 0; _ < MAX_PREDECESSORS; _++, revOff++) {
+                if(hRevData[revOff] == stateIdx) {
+                    hRevData[revOff] = -1; 
+                    break;
+                }
+            }
+        }
     }
 };
 
