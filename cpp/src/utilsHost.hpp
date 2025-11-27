@@ -13,6 +13,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <set>
 
 #define BLOCK_SIZE 512
 
@@ -119,6 +120,10 @@ struct TransitionTableHost{
     const size_t stateCount;
     const size_t inputCount;
 
+    int*         transCounts;
+    int*         safeCounts;
+    std::set<int> safeStates; //R
+
 
     TransitionTableHost(size_t stateCount, size_t inputCount) 
     : stateCount(stateCount), inputCount(inputCount) 
@@ -135,6 +140,11 @@ struct TransitionTableHost{
 
         cudaMalloc(&dTransitionLocks, stateCount * inputCount * sizeof(int));
         cudaMemset(dTransitionLocks, 0, stateCount * inputCount * sizeof(int));
+
+        transCounts = new int[stateCount][inputCount];
+        safeCounts = new int[stateCount][inputCount];
+        precomputeTransitions();
+
     }
 
     ~TransitionTableHost() {
@@ -142,6 +152,8 @@ struct TransitionTableHost{
         cudaFree(dRevData);
         delete[] hData;
         delete[] hRevData;
+        delete[] transCounts;
+        delete[] safeCounts;
     }
 
     void syncDeviceData() {
@@ -156,6 +168,20 @@ struct TransitionTableHost{
                    stateCount * inputCount * MAX_PREDECESSORS * sizeof(int),
                    cudaMemcpyDeviceToHost
         );
+    }
+
+    void precomputeTransitions(){
+        for(int stateIdx = 0; stateIdx < stateCount; stateIdx++){
+            for(int inputIdx = 0; inputIdx < inputCount; inputIdx++){
+                safeCounts[stateIdx][inputIdx] = 0;
+                int tot = 0;
+                for(int i = 0; i<MAX_TRANSITIONS; i++){
+                    if(get(stateIdx,inputIdx,i) != -1) tot++;
+                
+                }
+                transCounts[stateIdx][inputIdx] = tot;
+            }
+        }
     }
 
     int getOffset(int stateIdx, int inputIdx, int transition = 0) const {

@@ -7,5 +7,8 @@ PYBIND11_MODULE(bindings, m) {
 
         .def("applySecuritySpec", &Automaton::applySecuritySpec, py::arg("pyObstacleLowerBound"), py::arg("pyObstacleUpperBound"))
 
-        .def("applyReachabilitySpec", &Automaton::applyReachabilitySpec, py::arg("targetBounds"));
+        .def("applyReachabilitySpec", &Automaton::applyReachabilitySpec, py::arg("pyTargetLowerBound"), py::arg("pyTargetUpperBound"))
+
+        .def("getController", &Automaton::getController, py::arg("startState"), py::arg("pyTargetLowerBound"), py::arg("pyTargetUpperBound"));
+
 }

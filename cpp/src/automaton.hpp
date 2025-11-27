@@ -23,7 +23,8 @@ public:
 
 
     void applySecuritySpec(py::tuple pyObstacleLowerBound, py::tuple pyObstacleUpperBound);
-    void applyReachabilitySpec(py::object targetBounds);
+    void applyReachabilitySpec(py::tuple pyTargetLowerBound, py::tuple pyTargetUpperBound);
+    std::vector<int> getController(int startState, py::tuple pyTargetLowerBound, py::tuple pyTargetUpperBound);
 
     
 private:
@@ -33,8 +34,7 @@ private:
     
 private:
     void removeUnsafeStates(const std::vector<int>& obstacleCells);
-
-    std::vector<int> getController(int* hData, int* hRevData, int startState, int dimensions, int* targets, int target_size);
+    
     float getDistance(int state, int otherState, int dimension);
 
     std::vector<int> floodFill(const std::vector<int>&  lowerBoundCoords, const std::vector<int>&  upperBoundCoords);

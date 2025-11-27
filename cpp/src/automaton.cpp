@@ -101,13 +101,11 @@ void Automaton::removeUnsafeStates(const std::vector<int>& obstacleCells){
  * from that we will consider the target with the least cumulative weight and find the path leading to it.
  * the weights are represented by default as 1 between nodes with the helper function float table::getDistance(int state, int otherState) but can be changed to any other formula as long as the weights are positive.
  * */
-std::vector<int> Automaton::getController(int* hData,
-                                        int* hRevData,
-                                        int startState,
-                                        int dimensions, // dimension of state space
-                                        int* targets,
-                                        int target_size)
+std::vector<int> Automaton::getController(int startState, 
+                                          py::tuple pyTargetLowerBound, 
+                                          py::tuple pyTargetUpperBound)
 {
+    applyReachabilitySpec(pyTargetLowerBound, pyTargetUpperBound);
     const float INF = 1e30f;
     // total distance array
     float *dist = new float[table.stateCount];
@@ -134,12 +132,12 @@ std::vector<int> Automaton::getController(int* hData,
         for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
             for(int offset = 0; offset < MAX_TRANSITIONS; offset++) {
               
-                int nextState = hData[table.getOffset(currentState, inputIdx, offset)];
+                int nextState = table.hData[table.getOffset(currentState, inputIdx, offset)];
                 if(nextState == -1) continue;
 
                 int newDistance = d + getDistance(currentState, nextState, dimensions);
 
-                if(newDistance < dist[nextState]) {
+                if(newDistance < dist[nextState] && table.safeCounts[currentState][inputIdx] == table.transCounts[currentState][inputIdx]) {
                     dist[nextState] = newDistance;
                     prevState[nextState] = currentState;
                     prevInput[nextState] = inputIdx;
@@ -176,9 +174,39 @@ std::vector<int> Automaton::getController(int* hData,
 
 }
 
-// TODO: andirouh db
-void Automaton::applyReachabilitySpec(py::object targetBounds) {
-    return;
+
+void Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBound, py::tuple pyTargetUpperBound) {
+    std::vector<int> targetLowerBound = std::vector<int>(stateDim);
+    std::vector<int> targetUpperBound = std::vector<int>(stateDim);
+
+    for(int dim = 0; dim < stateDim; dim++){
+        targetLowerBound[dim] = pyTargetLowerBound[dim].cast<int>();
+        targetUpperBound[dim] = pyTargetUpperBound[dim].cast<int>();
+    }
+    std::vector<int> targetCells = floodFill(targetLowerBound, targetUpperBound);
+
+    table.safeStates.clear();
+    std::queue<int> pendingStates;
+    for(int target : targetCells) 
+        pendingStates.push(target);
+    //TODO: Solve for intersection between obstacles and target
+
+    while (!pendingStates.empty()){
+        int stateIdx = pendingStates.front(); pendingStates.pop();
+        if(table.safeStates.count(stateIdx)) continue;
+        table.safeStates.insert(stateIdx);
+
+        for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx ++){
+            for(int revOffset = table.getRevOffset(stateIdx,inputIdx) , _=0; _<MAX_PREDECESSORS; _++, revOffset++){
+                int predIdx = table.hRevData[revOffset];
+                if(predIdx != -1 && !table.safeStates.count(predIdx)){
+                    if (++table.safeCounts[predIdx][inputIdx] == table.transCounts[predIdx][inputIdx])
+                        pendingStates.push(predIdx);
+                }
+            }
+        }
+    }
+    
 }
 
 float Automaton::getDistance(int state, int otherState, int dimensions) {
