@@ -27,9 +27,10 @@ private:
     TransitionTableHost table;
     const int           stateDim;
     std::vector<int>    resolutionStride;
+    std::vector<int>    controller;
     
 private:
-    std::vector<int> applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords);
+    void applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords);
     std::vector<int> floodFill(const std::vector<int>&  lowerBoundCoords, const std::vector<int>&  upperBoundCoords);
 
     inline void validateDimension(const py::object& space);

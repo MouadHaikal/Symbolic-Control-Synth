@@ -13,7 +13,6 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include <unordered_set>
 
 #define BLOCK_SIZE 512
 
@@ -117,12 +116,13 @@ struct TransitionTableHost{
     int*         dRevData;
     int*         hRevData;
     int*         dTransitionLocks;
+
     const size_t stateCount;
     const size_t inputCount;
 
     int*         transCounts;
     int*         safeCounts;
-    std::unordered_set<int> safeStates; //R
+    int*         safeStates; //R
 
 
     TransitionTableHost(size_t stateCount, size_t inputCount) 
@@ -143,7 +143,7 @@ struct TransitionTableHost{
 
         transCounts = new int[stateCount * inputCount];
         safeCounts = new int[stateCount * inputCount];
-
+        safeStates = new int[stateCount];
     }
 
     ~TransitionTableHost() {
@@ -153,6 +153,7 @@ struct TransitionTableHost{
         delete[] hRevData;
         delete[] transCounts;
         delete[] safeCounts;
+        delete[] safeStates;
     }
 
     void syncDeviceData() {

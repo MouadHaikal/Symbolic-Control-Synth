@@ -12,7 +12,7 @@ disturbanceSpace = ContinuousSpace(2, [(0.5, 0.7), (0.6, 0.7)])
 
 model = Model(
     stateSpace=stateSpace,            
-    controlSpace=inputSpace,        
+    inputSpace=inputSpace,        
     disturbanceSpace=disturbanceSpace,
     timeStep=1,
     equations=[
