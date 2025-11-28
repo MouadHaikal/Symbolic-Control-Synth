@@ -194,74 +194,45 @@ void Automaton::applySecuritySpec(py::tuple pyObstacleLowerBoundCoords, py::tupl
             }
         }
     }
+
+    // it is better to precompute transitions at the end of each security spec application
+    table.precomputeTransitions();
 }
 
 std::vector<int> Automaton::getController(int startState, 
                                           py::tuple pyTargetLowerBoundCoords, 
                                           py::tuple pyTargetUpperBoundCoords)
 {
-    std::vector<int> targetCells = applyReachabilitySpec(pyTargetLowerBoundCoords, pyTargetUpperBoundCoords);
-    std::unordered_set<int> targetCellsSet(targetCells.begin(), targetCells.end());
+    applyReachabilitySpec(pyTargetLowerBoundCoords, pyTargetUpperBoundCoords);
 
-    printf("Target states\n");
-    for(int c : targetCells) 
-        printf("%d ", c);
-    printf("\n");
+    std::vector<int> statesPath;
+    statesPath.push_back(startState);
 
-    printf("Safe states\n");
-    for(int safe : table.safeStates) 
-        printf("%d ", safe);
-    printf("\n");
+    int stateIdx = startState;
 
+    while(table.safeStates[stateIdx] != 0) { // this means we haven't reached a target
+        int inputIdx = controller[stateIdx];
+        for(int trans = 0; trans < MAX_TRANSITIONS; trans++) {
+            int transIdx = table.get(stateIdx, inputIdx, trans);
+            if(transIdx != -1) {
 
-    std::unordered_map<int, std::pair<int, int>> parent;  // Map: state -> (parent_state, input_used_to_reach_it)
-    parent[startState] = {-1, -1};
-
-    std::queue<int> q;
-    q.push(startState);
-
-    while(!q.empty()) {
-        int stateIdx = q.front(); q.pop();
-        if(!table.safeStates.count(stateIdx)) continue;
-
-        // Found target
-        if (targetCellsSet.count(stateIdx)){
-            // Backtrack to reconstruct *state* path
-            std::vector<int> states;
-            int currIdx = stateIdx;
-
-            while (currIdx != -1) {
-                states.push_back(currIdx);
-                currIdx = parent[currIdx].first;  // move to parent
+                printf("%d -> ", transIdx);
+                stateIdx = transIdx;
+                statesPath.push_back(stateIdx);
+                break;
             }
-
-            std::reverse(states.begin(), states.end());  // start -> ... -> target
-            return states;
-        }
-
-        for (int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
-            if ((table.safeCounts[table.getPosition(stateIdx, inputIdx)]) == table.transCounts[table.getPosition(stateIdx, inputIdx)]){
-                // Add target cells to the queue
-                
-                for (int trans = 0; trans < MAX_TRANSITIONS; trans++) {
-                    int targetIdx = table.get(stateIdx, inputIdx, trans);
-                    if (targetIdx != -1 && !parent.count(targetIdx)) {
-                        parent[targetIdx] = {stateIdx, inputIdx};  // Store parent + input
-                        q.push(targetIdx);
-                    }
-                }
-            }
-
         }
     }
+    printf("\n");
 
-    printf("Cannot reach target from start state: %d\n", startState);
-    return std::vector<int>({-1});
+    return statesPath;
 }
 
 
 
-std::vector<int> Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords) {
+void Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords) {
+
+
     std::vector<int> targetLowerBoundCoords = std::vector<int>(stateDim);
     std::vector<int> targetUpperBoundCoords = std::vector<int>(stateDim);
 
@@ -270,31 +241,44 @@ std::vector<int> Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBoundCo
         targetUpperBoundCoords[dim] = pyTargetUpperBoundCoords[dim].cast<int>();
     }
     std::vector<int> targetCells = floodFill(targetLowerBoundCoords, targetUpperBoundCoords);
+    memset(table.safeStates, -1, table.stateCount * sizeof(int));
+
+    controller.reserve(table.stateCount);
+    memset(controller.data(), -1, table.stateCount * sizeof(int));
 
     std::queue<int> pendingStates;
     for(int target : targetCells) 
+    {
         pendingStates.push(target);
-    //TODO: Solve for intersection between obstacles and target
+        table.safeStates[target] = 0;
+    }
 
     while (!pendingStates.empty()){
         int stateIdx = pendingStates.front(); pendingStates.pop();
-        if(table.safeStates.count(stateIdx)) continue;
-        table.safeStates.insert(stateIdx);
 
         for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx ++){
             for(int pred = 0; pred < MAX_PREDECESSORS; pred++){
                 int predIdx = table.getRev(stateIdx, inputIdx, pred);
-                if(predIdx != -1 && table.safeStates.count(predIdx) == 0){
+                if(predIdx != -1 && table.safeStates[predIdx] == -1){
                     if ((++table.safeCounts[table.getPosition(predIdx, inputIdx)]) == table.transCounts[table.getPosition(predIdx, inputIdx)])
                     {
-                        pendingStates.push(predIdx);
+                        bool canAdd = true;
+                        for(int trans = 0; trans < MAX_TRANSITIONS; trans++) {
+                            int transIdx = table.get(predIdx, inputIdx, trans);
+                            if(table.safeStates[transIdx] > table.safeStates[stateIdx]) {
+                                canAdd = false; break;
+                            }
+                        }
+                        if(canAdd) {
+                            table.safeStates[predIdx] = table.safeStates[stateIdx] + 1;
+                            controller[predIdx] = inputIdx;
+                            pendingStates.push(predIdx);
+                        }
                     }
                 }
             }
         }
     }
-
-    return targetCells;
 }
 
 std::vector<int> Automaton::floodFill(const std::vector<int>&  lowerBoundCoords, const std::vector<int>&  upperBoundCoords){
