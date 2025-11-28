@@ -36,11 +36,11 @@ class InputWindow(QMainWindow):
 
         # Create space groups
         self.stateGroup = self._createSpaceGroup("State Space", "e.g., [(0,10),(0,10)]", "e.g., [10,10]")
-        self.controlGroup = self._createSpaceGroup("Control Space", "e.g., [(-1,1),(0,2)]", "e.g., [10,10]")
+        self.inputGroup = self._createSpaceGroup("Input Space", "e.g., [(-1,1),(0,2)]", "e.g., [10,10]")
         self.disturbGroup = self._createSpaceGroup("Disturbance Space", "e.g., [(-0.5,0.5),(0,1)]", "e.g., [10,10]")
 
         layout.addWidget(self.stateGroup["group"])
-        layout.addWidget(self.controlGroup["group"])
+        layout.addWidget(self.inputGroup["group"])
         layout.addWidget(self.disturbGroup["group"])
 
         # Equations input
@@ -48,7 +48,7 @@ class InputWindow(QMainWindow):
         self.equationsInput.setPlaceholderText(
             "Enter one equation per line.\n"
             "Use symbols x, u, w starting from 1 (x1, x2, ..., u1, u2, ..., w1, w2, ...),\n"
-            "depending on the dimensions of state, control, and disturbance spaces.\n"
+            "depending on the dimensions of state, input, and disturbance spaces.\n"
         )
         layout.addWidget(QLabel("Equations:"))
         layout.addWidget(self.equationsInput)
@@ -74,7 +74,7 @@ class InputWindow(QMainWindow):
 
     def _createSpaceGroup(self, title: str, boundsPlaceholder: str, resPlaceholder: str):
         """
-        Helper to create space input groups (state, control, disturbance).
+        Helper to create space input groups (state, input, disturbance).
         """
         group = QGroupBox(title)
         layout = QFormLayout()
@@ -104,7 +104,7 @@ class InputWindow(QMainWindow):
             return DiscreteSpace(dim, bounds, resolutions)
 
         discreteStateSpace = parseSpace(self.stateGroup)
-        discreteControlSpace = parseSpace(self.controlGroup)
+        discreteInputSpace = parseSpace(self.inputGroup)
         discreteDisturbanceSpace = parseSpace(self.disturbGroup)
 
         equationsList = [line.strip() for line in self.equationsInput.toPlainText().splitlines() if line.strip()]
@@ -116,7 +116,7 @@ class InputWindow(QMainWindow):
 
         model = Model(
             stateSpace=discreteStateSpace,
-            controlSpace=discreteControlSpace,
+            inputSpace=discreteInputSpace,
             disturbanceSpace=discreteDisturbanceSpace,
             timeStep=tau,
             equations=equationsList
@@ -138,7 +138,7 @@ class InputWindow(QMainWindow):
 
         data = {
             "state": getGroupData(self.stateGroup),
-            "control": getGroupData(self.controlGroup),
+            "input": getGroupData(self.inputGroup),
             "disturbance": getGroupData(self.disturbGroup),
             "equations": self.equationsInput.toPlainText(),
             "tau": self.timeStep.text(),
@@ -187,7 +187,7 @@ class InputWindow(QMainWindow):
             group["res"].setText(dataDict["resolutions"])
 
         setGroupData(self.stateGroup, data["state"])
-        setGroupData(self.controlGroup, data["control"])
+        setGroupData(self.inputGroup, data["input"])
         setGroupData(self.disturbGroup, data["disturbance"])
 
         self.equationsInput.setPlainText(data["equations"])
