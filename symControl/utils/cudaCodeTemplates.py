@@ -283,17 +283,20 @@ coopCodeTemplate="""\
             fAtPoint(stateCellLowerBound, inputCellCenter, disturbanceSpaceBounds.dLowerBound, targetLowerBound);
             fAtPoint(stateCellUpperBound, inputCellCenter, disturbanceSpaceBounds.dUpperBound, targetUpperBound);
 
-            stateSpaceInfo.getCellCoords(targetLowerBound, targetLowerBoundCoords);
-            stateSpaceInfo.getCellCoords(targetUpperBound, targetUpperBoundCoords);
+            bool outOfBounds = stateSpaceInfo.getCellCoords(targetLowerBound, targetLowerBoundCoords);
+            outOfBounds |= stateSpaceInfo.getCellCoords(targetUpperBound, targetUpperBoundCoords);
 
-            floodFill(targetLowerBoundCoords, 
-                      targetUpperBoundCoords, 
-                      resolutionStride,
-                      stateSpaceInfo.dimensions, 
-                      &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
-            );
+            if (!outOfBounds){{
+                floodFill(targetLowerBoundCoords, 
+                          targetUpperBoundCoords, 
+                          resolutionStride,
+                          stateSpaceInfo.dimensions, 
+                          &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
+                );
 
-            storeOutput(stateIdx, inputIdx, table);
+                storeOutput(stateIdx, inputIdx, table);
+            }}
+
         }}
     }}
 """
@@ -419,17 +422,19 @@ nonCoopCodeTemplate="""\
             }}
 
 
-            stateSpaceInfo.getCellCoords(targetLowerBound, targetLowerBoundCoords);
-            stateSpaceInfo.getCellCoords(targetUpperBound, targetUpperBoundCoords);
+            bool outOfBounds = stateSpaceInfo.getCellCoords(targetLowerBound, targetLowerBoundCoords);
+            outOfBounds |= stateSpaceInfo.getCellCoords(targetUpperBound, targetUpperBoundCoords);
 
-            floodFill(targetLowerBoundCoords, 
-                      targetUpperBoundCoords, 
-                      resolutionStride,
-                      stateDim, 
-                      &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
-            );
+            if (!outOfBounds){{
+                floodFill(targetLowerBoundCoords, 
+                          targetUpperBoundCoords, 
+                          resolutionStride,
+                          stateDim, 
+                          &table.dData[table.getOffset(stateIdx, inputIdx, 0)]
+                );
 
-            storeOutput(stateIdx, inputIdx, table);
+                storeOutput(stateIdx, inputIdx, table);
+            }}
         }}
     }}
 """

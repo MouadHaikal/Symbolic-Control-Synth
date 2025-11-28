@@ -12,3 +12,13 @@ class Automaton:
                  isCooperative: bool,
                  maxDisturbJac: tuple[tuple[float, ...], ...],
                  buildAutomatonCode: str) -> None: ...
+
+    def applySecuritySpec(self,
+                          pyObstacleLowerBoundCoords: tuple[float, ...],
+                          pyObstacleUpperBoundCoords: tuple[float, ...]) -> None: ...
+
+    def getController(self,
+                      startState: int,
+                      pyTargetLowerBoundCoords: tuple[float, ...],
+                      pyTargetUpperBoundCoords: tuple[float, ...]) -> None: ...
+                      

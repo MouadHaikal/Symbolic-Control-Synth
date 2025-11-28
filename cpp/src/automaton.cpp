@@ -1,19 +1,23 @@
 #include "automaton.hpp"
+#include "utilsDevice.hpp"
 #include "utilsHost.hpp"
 
 #include <cstdio>
 #include <cstdlib>
-#include <cuda.h>
 #include <nvrtc.h>
 #include <cstddef>
 #include <queue>
+#include <fstream>
+#include <iomanip>
+#include <unordered_set>
+#include <vector>
 
 
-Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
-                     py::object inputSpace,       // DiscreteSpace
-                     py::object disturbanceSpace, // ContinuousSpace
-                     bool isCooperative,
-                     py::tuple maxDisturbJac,
+Automaton::Automaton(py::object  stateSpace,       // DiscreteSpace
+                     py::object  inputSpace,       // DiscreteSpace
+                     py::object  disturbanceSpace, // ContinuousSpace
+                     bool        isCooperative,
+                     py::tuple   maxDisturbJac,
                      const char* buildAutomatonCode)
     : table(stateSpace.attr("cellCount").cast<size_t>(), inputSpace.attr("cellCount").cast<size_t>()),
         stateDim(stateSpace.attr("dimensions").cast<int>())
@@ -21,6 +25,7 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     validateDimension(stateSpace);
     validateDimension(inputSpace);
     validateDimension(disturbanceSpace);
+
 
     CudaCompilationContext compilationContext{buildAutomatonCode, isCooperative};
 
@@ -41,153 +46,231 @@ Automaton::Automaton(py::object stateSpace,       // DiscreteSpace
     for (int i = 1; i < stateDim; ++i)
         resolutionStride[i] = pyResolutions[i-1].cast<int>() * resolutionStride[i-1];
 
-}
+    table.precomputeTransitions();
 
-Automaton::~Automaton() {
 
-}
 
-void Automaton::applySecuritySpec(py::tuple pyObstacleLowerBound, py::tuple pyObstacleUpperBound){
-    std::vector<int> obstacleLowerBound = std::vector<int>(stateDim);
-    std::vector<int> obstacleUpperBound = std::vector<int>(stateDim);
+    std::string logFilePath = "table.log";
+    std::ofstream logFile(logFilePath);
 
-    for(int dim = 0; dim < stateDim; dim++){
-        obstacleLowerBound[dim] = pyObstacleLowerBound[dim].cast<int>();
-        obstacleUpperBound[dim] = pyObstacleUpperBound[dim].cast<int>();
+    if (!logFile.is_open()) {
+        std::cerr << "Error: Could not open log file at " << logFilePath << std::endl;
+        return;
     }
-    std::vector<int> obstacleCells = floodFill(obstacleLowerBound, obstacleUpperBound);
-    removeUnsafeStates(obstacleCells);
 
+    logFile << "\n" << std::string(80, '=') << "\n";
+    logFile << "TRANSITION TABLES SUMMARY\n";
+    logFile << std::string(80, '=') << "\n\n";
 
-}
+    // ============== FORWARD TRANSITIONS (hData) ==============
+    logFile << "FORWARD TRANSITIONS (hData)\n";
+    logFile << "- Represents: For each (state, input) pair, which states can be reached\n";
+    logFile << std::string(80, '-') << "\n\n";
 
+    for (int state = 0; state < table.stateCount; ++state) {
+        for (int input = 0; input < table.inputCount; ++input) {
+            // Calculate the block index in the flattened array
+            // Block structure: [state0-input0 | state0-input1 | ... | stateN-inputM]
+            int blockIndex = (state * table.inputCount + input) * MAX_TRANSITIONS;
 
-void Automaton::removeUnsafeStates(const std::vector<int>& obstacleCells){
-    std::queue<int> toRemove;
-    for(const int idx : obstacleCells) {
-        toRemove.push(idx);
-    }
-    while(!toRemove.empty()) {
-        int stateIdx = toRemove.front();
-        toRemove.pop();
-        for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
-            for(int revOff = table.getOffset(stateIdx, inputIdx), _ = 0; _ < MAX_PREDECESSORS; _++, revOff++) {
-                int parIdx = table.hRevData[revOff]; 
-                if(parIdx == -1) continue;
-                table.removeTransitions(parIdx, inputIdx);
-                
-                bool toRemoveFlag = true;
-                for(int i = table.getOffset(parIdx, 0), _ = 0; _ < table.inputCount*MAX_TRANSITIONS && toRemoveFlag; _++, i++) {
-                    if(table.hData[i] != -1) {
-                        toRemoveFlag = false;
+            logFile << "State " << std::setw(3) << state 
+                << " | Input " << std::setw(3) << input 
+                << "   ==>   : ";
+
+            // Iterate through the block and collect non-negative values
+            std::vector<int> destinations;
+            for (int i = 0; i < MAX_TRANSITIONS; ++i) {
+                int destState = table.hData[blockIndex + i];
+                if (destState >= 0) {  // Skip -1 entries (no transition)
+                    destinations.push_back(destState);
+                }
+            }
+
+            // Print destinations or indicate no transitions
+            if (destinations.empty()) {
+                logFile << "[ None ]\n";
+            } else {
+                logFile << "[ ";
+                for (size_t i = 0; i < destinations.size(); ++i) {
+                    logFile << destinations[i];
+                    if (i < destinations.size() - 1) {
+                        logFile << ", ";
                     }
                 }
-
-                if(toRemoveFlag) {
-                    toRemove.push(parIdx);
-                }
+                logFile << " ]\n";
             }
         }
     }
-    
-}
 
+    logFile << "\n";
 
-/* resolveReachabilitySpec --> from a startState, how can we reach the targets?
- * Always call this function after pruning all undesirable states
- * this takes as input the direct graph and its reverse, the target states we would like to reach.
- * out represent the series of inputs to provide for the automaton
- * the algorithm will use Djkstra's algorithm to now what is the minimal distance from a start state and the targets
- * from that we will consider the target with the least cumulative weight and find the path leading to it.
- * the weights are represented by default as 1 between nodes with the helper function float table::getDistance(int state, int otherState) but can be changed to any other formula as long as the weights are positive.
- * */
-std::vector<int> Automaton::getController(int startState, 
-                                          py::tuple pyTargetLowerBound, 
-                                          py::tuple pyTargetUpperBound)
-{
-    applyReachabilitySpec(pyTargetLowerBound, pyTargetUpperBound);
-    const float INF = 1e30f;
-    // total distance array
-    float *dist = new float[table.stateCount];
-    for(int i = 0; i < table.stateCount; i++) dist[i] = INF;
+    // ============== REVERSE TRANSITIONS (hRevData) ==============
+    logFile << "REVERSE TRANSITIONS (hRevData)\n";
+    logFile << "- Represents: For each (state, input) pair, which states can reach it\n";
+    logFile << std::string(80, '-') << "\n\n";
 
-    // backtracking purposes.
-    int *prevState = new int[table.stateCount];
-    int *prevInput = new int[table.stateCount];
+    for (int state = 0; state < table.stateCount; ++state) {
+        for (int input = 0; input < table.inputCount; ++input) {
+            // Calculate the block index in the flattened array
+            // Same structure as hData but with predecessor counts
+            int blockIndex = (state * table.inputCount + input) * MAX_PREDECESSORS;
 
-    using P = std::pair<float, int>;
-    std::priority_queue<P, std::vector<P>, std::greater<P>> pq;
+            logFile << "State " << std::setw(3) << state 
+                << " | Input " << std::setw(3) << input 
+                << "   <==   : ";
 
-    dist[startState] = 0.0f;
-    prevState[startState] = -1; // means we don't have any route to take
-    prevInput[startState] = -1;
-    pq.push({0.0f, startState});
-
-    while(!pq.empty()) {
-        auto [d, currentState] = pq.top();
-        pq.pop();
-        if(d > dist[currentState]) continue;
-
-        // checking the neighbors
-        for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
-            for(int offset = 0; offset < MAX_TRANSITIONS; offset++) {
-              
-                int nextState = table.hData[table.getOffset(currentState, inputIdx, offset)];
-                if(nextState == -1) continue;
-
-                // int newDistance = d + getDistance(currentState, nextState, dimensions);
-                // TODO:: compute newDistance with an online distance function
-                int newDistance = d + 1.0;
-
-
-                if(newDistance < dist[nextState] && table.safeCounts[table.getPosition(currentState, inputIdx)] == table.transCounts[table.getPosition(currentState, inputIdx)]) {
-                    dist[nextState] = newDistance;
-                    prevState[nextState] = currentState;
-                    prevInput[nextState] = inputIdx;
-                    pq.push({dist[nextState], nextState});
+            // Iterate through the block and collect non-negative values
+            std::vector<int> predecessors;
+            for (int i = 0; i < MAX_PREDECESSORS; ++i) {
+                int srcState = table.hRevData[blockIndex + i];
+                if (srcState >= 0) {  // Skip -1 entries (no transition)
+                    predecessors.push_back(srcState);
                 }
+            }
+
+            // Print predecessors or indicate no transitions
+            if (predecessors.empty()) {
+                logFile << "[ None ]\n";
+            } else {
+                logFile << "[ ";
+                for (size_t i = 0; i < predecessors.size(); ++i) {
+                    logFile << predecessors[i];
+                    if (i < predecessors.size() - 1) {
+                        logFile << ", ";
+                    }
+                }
+                logFile << " ]\n";
             }
         }
     }
-    
 
-    // get the least expensive path
-    int bestTarget = -1;
-    float bestDistance = INF;
-    for(int target : table.safeStates) {
-        if(dist[target] < bestDistance) bestDistance = dist[target], bestTarget = target;
-    }
+    logFile << "\n" << std::string(80, '=') << "\n\n";
+    logFile.flush();
+    logFile.close();
 
-    // get path from bestTarget to the startState
-    std::vector<int> inputsRev;
-    if (bestTarget == -1) {
-        printf("[ERR] No target reachable\n");
-        return inputsRev;
-    }
-
-    // Step 4: Reconstruct path (backwards)
-    int cur = bestTarget;
-    while (cur != startState && cur != -1) {
-        inputsRev.push_back(prevInput[cur]);
-        cur = prevState[cur];
-    }
-    reverse(inputsRev.begin(), inputsRev.end());
-    return inputsRev;
-
+    std::cout << "Transition tables printed to: " << logFilePath << std::endl;
 }
 
 
-void Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBound, py::tuple pyTargetUpperBound) {
-    std::vector<int> targetLowerBound = std::vector<int>(stateDim);
-    std::vector<int> targetUpperBound = std::vector<int>(stateDim);
+void Automaton::applySecuritySpec(py::tuple pyObstacleLowerBoundCoords, py::tuple pyObstacleUpperBoundCoords){
+    std::vector<int> obstacleLowerBoundCoords = std::vector<int>(stateDim);
+    std::vector<int> obstacleUpperBoundCoords = std::vector<int>(stateDim);
 
     for(int dim = 0; dim < stateDim; dim++){
-        targetLowerBound[dim] = pyTargetLowerBound[dim].cast<int>();
-        targetUpperBound[dim] = pyTargetUpperBound[dim].cast<int>();
+        obstacleLowerBoundCoords[dim] = pyObstacleLowerBoundCoords[dim].cast<int>();
+        obstacleUpperBoundCoords[dim] = pyObstacleUpperBoundCoords[dim].cast<int>();
     }
-    std::vector<int> targetCells = floodFill(targetLowerBound, targetUpperBound);
+    std::vector<int> obstacleCells = floodFill(obstacleLowerBoundCoords, obstacleUpperBoundCoords);
 
-    table.safeStates.clear();
+
+    // Remove unsafe states
+    std::queue<int> toRemove;
+    std::unordered_set<int> removed;
+    for(const int idx : obstacleCells)
+        toRemove.push(idx);
+
+
+    while(!toRemove.empty()) {
+        int stateIdx = toRemove.front(); toRemove.pop();
+        if(removed.count(stateIdx)) continue;
+        removed.insert(stateIdx);
+
+        for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
+            table.removeTransitions(stateIdx, inputIdx);
+
+            for(int pred = 0; pred < MAX_PREDECESSORS; pred++) {
+                int parIdx = table.getRev(stateIdx, inputIdx, pred); 
+                if(parIdx == -1) continue;
+                table.removeTransitions(parIdx, inputIdx);
+
+                bool toRemoveFlag = true;
+                for(int i = table.getOffset(parIdx, 0), _ = 0; _ < table.inputCount*MAX_TRANSITIONS && toRemoveFlag; _++, i++) {
+                    if(table.hData[i] != -1) 
+                        toRemoveFlag = false;
+                }
+
+                if(toRemoveFlag) 
+                    toRemove.push(parIdx);
+            }
+        }
+    }
+}
+
+std::vector<int> Automaton::getController(int startState, 
+                                          py::tuple pyTargetLowerBoundCoords, 
+                                          py::tuple pyTargetUpperBoundCoords)
+{
+    std::vector<int> targetCells = applyReachabilitySpec(pyTargetLowerBoundCoords, pyTargetUpperBoundCoords);
+    std::unordered_set<int> targetCellsSet(targetCells.begin(), targetCells.end());
+
+    printf("Target states\n");
+    for(int c : targetCells) 
+        printf("%d ", c);
+    printf("\n");
+
+    printf("Safe states\n");
+    for(int safe : table.safeStates) 
+        printf("%d ", safe);
+    printf("\n");
+
+
+    std::unordered_map<int, std::pair<int, int>> parent;  // Map: state -> (parent_state, input_used_to_reach_it)
+    parent[startState] = {-1, -1};
+
+    std::queue<int> q;
+    q.push(startState);
+
+    while(!q.empty()) {
+        int stateIdx = q.front(); q.pop();
+        if(!table.safeStates.count(stateIdx)) continue;
+
+        // Found target
+        if (targetCellsSet.count(stateIdx)){
+            // Backtrack to reconstruct *state* path
+            std::vector<int> states;
+            int currIdx = stateIdx;
+
+            while (currIdx != -1) {
+                states.push_back(currIdx);
+                currIdx = parent[currIdx].first;  // move to parent
+            }
+
+            std::reverse(states.begin(), states.end());  // start -> ... -> target
+            return states;
+        }
+
+        for (int inputIdx = 0; inputIdx < table.inputCount; inputIdx++) {
+            if ((table.safeCounts[table.getPosition(stateIdx, inputIdx)]) == table.transCounts[table.getPosition(stateIdx, inputIdx)]){
+                // Add target cells to the queue
+                
+                for (int trans = 0; trans < MAX_TRANSITIONS; trans++) {
+                    int targetIdx = table.get(stateIdx, inputIdx, trans);
+                    if (targetIdx != -1 && !parent.count(targetIdx)) {
+                        parent[targetIdx] = {stateIdx, inputIdx};  // Store parent + input
+                        q.push(targetIdx);
+                    }
+                }
+            }
+
+        }
+    }
+
+    printf("Cannot reach target from start state: %d\n", startState);
+    return std::vector<int>({-1});
+}
+
+
+
+std::vector<int> Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords) {
+    std::vector<int> targetLowerBoundCoords = std::vector<int>(stateDim);
+    std::vector<int> targetUpperBoundCoords = std::vector<int>(stateDim);
+
+    for(int dim = 0; dim < stateDim; dim++){
+        targetLowerBoundCoords[dim] = pyTargetLowerBoundCoords[dim].cast<int>();
+        targetUpperBoundCoords[dim] = pyTargetUpperBoundCoords[dim].cast<int>();
+    }
+    std::vector<int> targetCells = floodFill(targetLowerBoundCoords, targetUpperBoundCoords);
+
     std::queue<int> pendingStates;
     for(int target : targetCells) 
         pendingStates.push(target);
@@ -199,33 +282,19 @@ void Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBound, py::tuple py
         table.safeStates.insert(stateIdx);
 
         for(int inputIdx = 0; inputIdx < table.inputCount; inputIdx ++){
-            for(int revOffset = table.getRevOffset(stateIdx,inputIdx) , _=0; _<MAX_PREDECESSORS; _++, revOffset++){
-                int predIdx = table.hRevData[revOffset];
-                if(predIdx != -1 && !table.safeStates.count(predIdx)){
-                    if (++table.safeCounts[table.getPosition(predIdx, inputIdx)] == table.transCounts[table.getPosition(predIdx, inputIdx)])
+            for(int pred = 0; pred < MAX_PREDECESSORS; pred++){
+                int predIdx = table.getRev(stateIdx, inputIdx, pred);
+                if(predIdx != -1 && table.safeStates.count(predIdx) == 0){
+                    if ((++table.safeCounts[table.getPosition(predIdx, inputIdx)]) == table.transCounts[table.getPosition(predIdx, inputIdx)])
+                    {
                         pendingStates.push(predIdx);
+                    }
                 }
             }
         }
     }
-    
-}
 
-float Automaton::getDistance(int state, int otherState, int dimensions) {
-    return 1.0f;
-}
-
-
-inline void Automaton::validateDimension(const py::object& space) {
-    if (space.attr("dimensions").cast<int>() > MAX_DIMENSIONS) {
-        printf("Error: Space dimensions (%d) > MAX_DIMENSIONS (%d) (at %s)\n", 
-               space.attr("dimensions").cast<int>(), 
-               MAX_DIMENSIONS,
-               __FILE__
-        );
-
-        exit(EXIT_FAILURE);
-    }
+    return targetCells;
 }
 
 std::vector<int> Automaton::floodFill(const std::vector<int>&  lowerBoundCoords, const std::vector<int>&  upperBoundCoords){
@@ -257,3 +326,17 @@ std::vector<int> Automaton::floodFill(const std::vector<int>&  lowerBoundCoords,
 
     return out;
 }
+
+
+inline void Automaton::validateDimension(const py::object& space) {
+    if (space.attr("dimensions").cast<int>() > MAX_DIMENSIONS) {
+        printf("Error: Space dimensions (%d) > MAX_DIMENSIONS (%d) (at %s)\n", 
+               space.attr("dimensions").cast<int>(), 
+               MAX_DIMENSIONS,
+               __FILE__
+        );
+
+        exit(EXIT_FAILURE);
+    }
+}
+

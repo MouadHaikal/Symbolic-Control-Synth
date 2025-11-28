@@ -51,18 +51,23 @@ struct SpaceInfoDevice{
     } 
 
     __device__ __forceinline__
-    void getCellCoords(const float* point, int* coords) const {
-        for(int i = 0; i < dimensions; i++) {
-            if (point[i] < dLowerBound[i]) 
-                coords[i] = 0;
-            else{
-                float normalized = (point[i] - dLowerBound[i]) / (dUpperBound[i] - dLowerBound[i]);
+    bool getCellCoords(const float* point, int* coords) const {
+        bool outOfBounds = false;
 
-                int cand1 = normalized * dResolutions[i];
-                int cand2 = dResolutions[i] - 1;
-                coords[i] = (cand1 < cand2) ? cand1 : cand2; 
+        for(int i = 0; i < dimensions; i++) {
+            if (point[i] < dLowerBound[i] || point[i] > dUpperBound[i]) {
+                outOfBounds = true;
+                break;
             }
+
+            float normalized = (point[i] - dLowerBound[i]) / (dUpperBound[i] - dLowerBound[i]);
+
+            int cand1 = normalized * dResolutions[i];
+            int cand2 = dResolutions[i] - 1;
+            coords[i] = (cand1 < cand2) ? cand1 : cand2; 
         }
+
+        return outOfBounds;
     }
 };
 

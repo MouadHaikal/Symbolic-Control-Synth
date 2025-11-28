@@ -13,7 +13,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include <set>
+#include <unordered_set>
 
 #define BLOCK_SIZE 512
 
@@ -122,7 +122,7 @@ struct TransitionTableHost{
 
     int*         transCounts;
     int*         safeCounts;
-    std::set<int> safeStates; //R
+    std::unordered_set<int> safeStates; //R
 
 
     TransitionTableHost(size_t stateCount, size_t inputCount) 
@@ -143,7 +143,6 @@ struct TransitionTableHost{
 
         transCounts = new int[stateCount * inputCount];
         safeCounts = new int[stateCount * inputCount];
-        precomputeTransitions();
 
     }
 
@@ -175,9 +174,8 @@ struct TransitionTableHost{
             for(int inputIdx = 0; inputIdx < inputCount; inputIdx++){
                 safeCounts[getPosition(stateIdx, inputIdx)] = 0;
                 int tot = 0;
-                for(int i = 0; i<MAX_TRANSITIONS; i++){
-                    if(get(stateIdx,inputIdx,i) != -1) tot++;
-                
+                for(int trans = 0; trans< MAX_TRANSITIONS; trans++){
+                    if(get(stateIdx, inputIdx, trans) != -1) tot++;
                 }
                 transCounts[getPosition(stateIdx, inputIdx)] = tot;
             }
@@ -213,14 +211,14 @@ struct TransitionTableHost{
     }
 
     void removeTransitions(int stateIdx, int inputIdx) {
-        for(int off = getOffset(stateIdx, inputIdx), _ = 0; _ < MAX_TRANSITIONS; _++, off++) {
-            int dstIdx = hData[off];
+        for(int trans = 0; trans < MAX_TRANSITIONS; trans++) {
+            int dstIdx = get(stateIdx, inputIdx, trans);
             if(dstIdx == -1) continue;
-            hData[off] = -1;
+            set(stateIdx, inputIdx, trans, -1);
 
-            for(int revOff = getOffset(stateIdx, inputIdx), _ = 0; _ < MAX_PREDECESSORS; _++, revOff++) {
-                if(hRevData[revOff] == stateIdx) {
-                    hRevData[revOff] = -1; 
+            for(int pred = 0; pred < MAX_PREDECESSORS; pred++) {
+                if(getRev(dstIdx, inputIdx, pred) == stateIdx) {
+                    set(dstIdx, inputIdx, pred, -1);
                     break;
                 }
             }
