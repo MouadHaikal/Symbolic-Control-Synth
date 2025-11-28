@@ -21,6 +21,16 @@ class GridWindow(QWidget):
         self.cellSizeY = cellSizeY * pixelScale
         self.cellSizeX = cellSizeX * pixelScale
 
+        # Precompute coordinate → index scale factors
+        (ymin, ymax), (xmin, xmax) = self.bounds
+        y_span = ymax - ymin if (ymax - ymin) != 0 else 1.0
+        x_span = xmax - xmin if (xmax - xmin) != 0 else 1.0
+
+        self._ymin = ymin
+        self._xmin = xmin
+        self.yScale = self.rows / y_span
+        self.xScale = self.cols / x_span
+
         self.startState = None
         self.goal = None
         self.obstacles = []
@@ -123,17 +133,27 @@ class GridWindow(QWidget):
             for cell in row:
                 cell.setPen(pen)
 
+    def clearGridColors(self):
+        """
+        Reset cell backgrounds without deleting grid items.
+        """
+        for row in self.gridItems:
+            for cell in row:
+                cell.setBrush(QBrush(Qt.white))
+
+
     # ======================== HELPERS ========================
 
     def mapPointToGrid(self, point):
         """
-        Map continuous (x,y) to discrete (row,col) indices.
+        Map continuous (x,y) to (row,col) using precomputed scale factors.
         """
         x, y = point
-        (ymin, ymax), (xmin, xmax) = self.bounds
-        col = int((x - xmin) / (xmax - xmin) * self.cols)
-        row = int((y - ymin) / (ymax - ymin) * self.rows)
-        return max(0, min(self.rows - 1, row)), max(0, min(self.cols - 1, col))
+        row = int((y - self._ymin) * self.yScale)
+        col = int((x - self._xmin) * self.xScale)
+        row = max(0, min(self.rows - 1, row))
+        col = max(0, min(self.cols - 1, col))
+        return row, col
 
     def colorRegion(self, region, color):
         """
@@ -145,11 +165,11 @@ class GridWindow(QWidget):
             print("Invalid region:", region)
             return
 
-        (Ymin, Ymax), (Xmin, Xmax) = self.bounds
-        rmin = max(0, int((ymin - Ymin) / (Ymax - Ymin) * self.rows))
-        rmax = min(self.rows - 1, int((ymax - Ymin) / (Ymax - Ymin) * self.rows))
-        cmin = max(0, int((xmin - Xmin) / (Xmax - Xmin) * self.cols))
-        cmax = min(self.cols - 1, int((xmax - Xmin) / (Xmax - Xmin) * self.cols))
+        rmin = max(0, int((ymin - self._ymin) * self.yScale))
+        rmax = min(self.rows - 1, int((ymax - self._ymin) * self.yScale))
+        cmin = max(0, int((xmin - self._xmin) * self.xScale))
+        cmax = min(self.cols - 1, int((xmax - self._xmin) * self.xScale))
+
 
         for r in range(rmin, rmax + 1):
             for c in range(cmin, cmax + 1):
@@ -161,7 +181,7 @@ class GridWindow(QWidget):
         """
         Refresh grid and draw start, goal, and obstacles.
         """
-        self.createGrid()
+        self.clearGridColors()
         self.obstacles = self._parseInput(self.obsInput.toPlainText(), default=[])
         for obs in self.obstacles:
             self.colorRegion(obs, Qt.GlobalColor.red)
@@ -181,11 +201,14 @@ class GridWindow(QWidget):
 
     def _parseInput(self, text, default=None):
         """
-        evaluate a Python literal input.
+        Safely parse Python literals (list, tuple, numbers) using ast.literal_eval.
         """
+        import ast
+        if not text:
+            return default
         try:
-            return eval(text)
-        except:
+            return ast.literal_eval(text)
+        except Exception:
             return default
 
     def _parsePoint(self, text):
