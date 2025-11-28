@@ -11,7 +11,7 @@ class GridWindow(QWidget):
     GUI window for visualizing robot grid, start/goal, obstacles, and paths.
     """
 
-    def __init__(self, model, pixelScale=40):
+    def __init__(self, model, pixelScale=1):
         super().__init__()
         self.model = model
         self.pixelScale = pixelScale

@@ -3,7 +3,6 @@ import os
 import json
 import csv
 import ast
-from typing import Sequence, Tuple
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -128,13 +127,13 @@ class InputWindow(QMainWindow):
 
     def saveInput(self):
         """
-        Save input data to JSON
+        Save input data to JSON (always .json, extension auto‑added if missing)
         """
         def getGroupData(group):
             return {
                 "dimensions": group["dim"].value(),
                 "bounds": group["bounds"].text(),
-                "resolutions": group["res"].text()
+                "resolutions": group["res"].text(),
             }
 
         data = {
@@ -142,23 +141,24 @@ class InputWindow(QMainWindow):
             "control": getGroupData(self.controlGroup),
             "disturbance": getGroupData(self.disturbGroup),
             "equations": self.equationsInput.toPlainText(),
-            "tau": self.timeStep.text()
+            "tau": self.timeStep.text(),
         }
 
         filePath, _ = QFileDialog.getSaveFileName(
-            self, "Save Input", "", "JSON Files (*.json);;CSV Files (*.csv)"
+            self,
+            "Save Input",
+            "",
+            "JSON Files (*.json)"
         )
         if not filePath:
             return
 
-        if filePath.endswith(".json"):
-            with open(filePath, "w") as f:
-                json.dump(data, f, indent=4)
-        elif filePath.endswith(".csv"):
-            with open(filePath, "w", newline='') as f:
-                writer = csv.writer(f)
-                for key, value in data.items():
-                    writer.writerow([key, value])
+        base, ext = os.path.splitext(filePath)
+        if ext.lower() != ".json":
+            filePath = base + ".json"
+
+        with open(filePath, "w") as f:
+            json.dump(data, f, indent=4)
 
     def loadInput(self):
         """
