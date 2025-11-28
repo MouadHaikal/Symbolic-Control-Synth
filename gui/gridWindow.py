@@ -55,7 +55,7 @@ class GridWindow(QWidget):
         layout = QVBoxLayout()
         parentLayout.addLayout(layout)
 
-        self.gridToggle = self._addCheckBox(layout, "Show Grid", True, self.updateGridPen)
+        self.gridToggle = self._addCheckBox(layout, "Show Grid", False, self.updateGridPen)
 
         self.startInput = self._addLineEdit(layout, "Start (x,y):", "e.g. 2.5, 1.3")
         self.goalInput = self._addLineEdit(layout, "Goal [(ymin,ymax),(xmin,xmax)]:", "[(2,4),(3,5)]")
@@ -106,6 +106,8 @@ class GridWindow(QWidget):
         for r in range(self.rows):
             row = []
             for c in range(self.cols):
+                self.cellSizeX = round(self.cellSizeX)
+                self.cellSizeY = round(self.cellSizeY)
                 rect = QGraphicsRectItem(c * self.cellSizeX, r * self.cellSizeY,
                                          self.cellSizeX, self.cellSizeY)
                 rect.setBrush(QBrush(Qt.GlobalColor.white))
@@ -198,8 +200,8 @@ class GridWindow(QWidget):
 
     def showPath(self, cell_path):
         """
-        Draw a blue polyline across discrete cells."
-        ""
+        Draw a blue polyline across discrete cells.
+        """
         if self.pathItem:
             self.scene.removeItem(self.pathItem)
             self.pathItem = None
