@@ -20,7 +20,7 @@ class Model:
     
     def __init__(self,
                  stateSpace: DiscreteSpace,
-                 controlSpace: DiscreteSpace,
+                 inputSpace: DiscreteSpace,
                  disturbanceSpace: ContinuousSpace,
                  timeStep: float,
                  equations: Sequence[str]
@@ -28,7 +28,7 @@ class Model:
         self.stateSpace = stateSpace
 
         self.transitionFunction = TransitionFunction(stateSpace, 
-                                                     controlSpace, 
+                                                     inputSpace, 
                                                      disturbanceSpace, 
                                                      timeStep, 
                                                      equations
