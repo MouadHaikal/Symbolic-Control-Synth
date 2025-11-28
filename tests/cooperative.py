@@ -40,7 +40,7 @@ automaton = Automaton(
     printer.printCode()
 )
 
-# automaton.applySecuritySpec((3, 3), (3, 3))
+#automaton.applySecuritySpec((3, 3), (3, 3))
 
 controller = automaton.getController(0, (10,10), (30,30))
 print(controller)

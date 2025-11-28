@@ -3,6 +3,12 @@ import os
 import json
 import csv
 import ast
+from symControl.space.continuousSpace import ContinuousSpace
+from symControl.model.codePrinter import CodePrinter
+from symControl.bindings import Automaton
+from gui.gridWindow import GridWindow
+from symControl.space.discreteSpace import DiscreteSpace
+from symControl.model.model import Model
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -10,9 +16,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QFormLayout,
     QLineEdit, QSpinBox, QLabel, QPushButton, QGroupBox, QFileDialog, QPlainTextEdit
 )
-from gui.gridWindow import GridWindow
-from symControl.space.discreteSpace import DiscreteSpace
-from symControl.model.model import Model
+
 
 
 class InputWindow(QMainWindow):
@@ -102,10 +106,15 @@ class InputWindow(QMainWindow):
             resolutions = ast.literal_eval(group["res"].text())
             dim = len(bounds)
             return DiscreteSpace(dim, bounds, resolutions)
+        def parseContinuousSpace(group):
+            bounds = ast.literal_eval(group["bounds"].text())
+            dim = len(bounds)
+            return ContinuousSpace(dim, bounds)
 
         discreteStateSpace = parseSpace(self.stateGroup)
         discreteControlSpace = parseSpace(self.controlGroup)
-        discreteDisturbanceSpace = parseSpace(self.disturbGroup)
+        ContinuousDisturbanceSpace = parseContinuousSpace(self.disturbGroup)
+
 
         equationsList = [line.strip() for line in self.equationsInput.toPlainText().splitlines() if line.strip()]
 
@@ -117,23 +126,31 @@ class InputWindow(QMainWindow):
         model = Model(
             stateSpace=discreteStateSpace,
             controlSpace=discreteControlSpace,
-            disturbanceSpace=discreteDisturbanceSpace,
+            disturbanceSpace=ContinuousDisturbanceSpace,
             timeStep=tau,
             equations=equationsList
         )
-
-        self.gridWindow = GridWindow(model)
+        printer = CodePrinter(model)
+        automaton = Automaton(
+            discreteStateSpace,
+            discreteControlSpace,
+            ContinuousDisturbanceSpace,
+            model.transitionFunction.isCooperative,
+            model.transitionFunction.disturbJacUpper,
+            printer.printCode()
+)
+        self.gridWindow = GridWindow(model,automaton)
         self.setCentralWidget(self.gridWindow)
 
     def saveInput(self):
         """
-        Save input data to JSON (always .json, extension auto‑added if missing)
+        Save input data to JSON
         """
         def getGroupData(group):
             return {
                 "dimensions": group["dim"].value(),
                 "bounds": group["bounds"].text(),
-                "resolutions": group["res"].text(),
+                "resolutions": group["res"].text()
             }
 
         data = {
@@ -141,24 +158,23 @@ class InputWindow(QMainWindow):
             "control": getGroupData(self.controlGroup),
             "disturbance": getGroupData(self.disturbGroup),
             "equations": self.equationsInput.toPlainText(),
-            "tau": self.timeStep.text(),
+            "tau": self.timeStep.text()
         }
 
         filePath, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Input",
-            "",
-            "JSON Files (*.json)"
+            self, "Save Input", "", "JSON Files (*.json);;CSV Files (*.csv)"
         )
         if not filePath:
             return
 
-        base, ext = os.path.splitext(filePath)
-        if ext.lower() != ".json":
-            filePath = base + ".json"
-
-        with open(filePath, "w") as f:
-            json.dump(data, f, indent=4)
+        if filePath.endswith(".json"):
+            with open(filePath, "w") as f:
+                json.dump(data, f, indent=4)
+        elif filePath.endswith(".csv"):
+            with open(filePath, "w", newline='') as f:
+                writer = csv.writer(f)
+                for key, value in data.items():
+                    writer.writerow([key, value])
 
     def loadInput(self):
         """
@@ -192,7 +208,6 @@ class InputWindow(QMainWindow):
 
         self.equationsInput.setPlainText(data["equations"])
         self.timeStep.setText(data["tau"])
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

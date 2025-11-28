@@ -11,9 +11,10 @@ class GridWindow(QWidget):
     GUI window for visualizing robot grid, start/goal, obstacles, and paths.
     """
 
-    def __init__(self, model, pixelScale=1):
+    def __init__(self, model, automaton, pixelScale=40):
         super().__init__()
         self.model = model
+        self.automaton = automaton
         self.pixelScale = pixelScale
         self.bounds = model.stateSpace.bounds
         self.rows, self.cols = model.stateSpace._DiscreteSpace__resolutions
@@ -63,7 +64,7 @@ class GridWindow(QWidget):
                                           "[[(1,2),(1,3)], [(4,6),(0,2)]]", 60)
 
         self.addButton = self._addButton(layout, "Add / Refresh", self.addElements)
-        self.testButton = self._addButton(layout, "Test Path", self.testPath)
+        self.testButton = self._addButton(layout, "Test Path", self.getPath)
 
     def _addLineEdit(self, layout, label, placeholder=""):
         layout.addWidget(QLabel(label))
@@ -219,8 +220,47 @@ class GridWindow(QWidget):
         self.pathItem = self.scene.addPath(path, QPen(Qt.GlobalColor.blue, 4))
         self.pathItem.setZValue(20)
 
-    def testPath(self):
-        """
-        Example path for testing.
-        """
-        self.showPath([(0, 0), (0, 1), (1, 1), (2, 2), (3, 2)])
+    def getPath(self):
+        
+        for obs in self.obstacles:
+            self.automaton.applySecuritySpec(obs[0], obs[1])
+        controller = self.automaton.getController(self.continuousToIndex(self.startState), self.goal[0], self.goal[1])
+
+        for i in range(0, len(controller)):
+            controller[i] = self.indexToState(controller[i])
+        self.showPath(controller)
+    
+    def coordsToIndex(self, x: int, y: int) -> int:
+       
+        cols = self.model.stateSpace.resolutions[0]
+        return y * cols + x
+
+
+    def continuousToIndex(self, xReal: float, yReal: float) -> int:
+        
+        xs_bounds = self.model.stateSpace.bounds[0]
+        ys_bounds = self.model.stateSpace.bounds[1]
+
+        xsRes = self.model.stateSpace.resolutions[0]
+        ysRes = self.model.stateSpace.resolutions[1]
+
+        # Compute cell sizes
+        dx = (xs_bounds[1] - xs_bounds[0]) / xsRes
+        dy = (ys_bounds[1] - ys_bounds[0]) / ysRes
+
+        ix = int((xReal - xs_bounds[0]) / dx)
+        iy = int((yReal - ys_bounds[0]) / dy)
+
+        return self.coordsToIndex(ix, iy)
+
+    def indexToState(self, index: int) -> list:
+    
+        cols = self.model.stateSpace.resolutions[0]
+
+        x = index % cols   
+        y = index // cols  
+
+        state = (x, y)  
+
+        return state
+
