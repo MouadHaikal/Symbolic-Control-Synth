@@ -18,6 +18,7 @@ dependencies = [
     "pygame",
     "sympy",
     "PyQt6",
+    "matplotlib",
     "scipy",
     "pybind11"
 ]

@@ -60,6 +60,7 @@ class TransitionFunction:
 
         parsedEquations = tuple(sp.parse_expr(eq, local_dict=self.symbolContext) for eq in equations)
         self.equations = sp.Matrix([expr.subs({self.symbolContext[TAU]: timeStep}).simplify() for expr in parsedEquations])
+        print(self.equations)
 
         self.isCooperative, self.stateJac, self.stateJacGrad, self.disturbJacUpper = self.__cooperativityAnalysis();
 
@@ -102,7 +103,7 @@ class TransitionFunction:
                 key=lambda x: x.name
             )
 
-            lmbd = sp.lambdify(vars, expr, "numpy")
+            lmbd = sp.lambdify(vars, expr, "math")
 
             def func(x):
                 return lmbd(*x)

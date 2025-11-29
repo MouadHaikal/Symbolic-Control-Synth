@@ -17,20 +17,20 @@ class GridWindow(QWidget):
         self.automaton = automaton
         self.pixelScale = pixelScale
         self.bounds = model.stateSpace.bounds
-        self.rows, self.cols = model.stateSpace._DiscreteSpace__resolutions
+        self.rows, self.cols = model.stateSpace.resolutions
         cellSizeY, cellSizeX = model.stateSpace.cellSize
         self.cellSizeY = cellSizeY * pixelScale
         self.cellSizeX = cellSizeX * pixelScale
 
         # Precompute coordinate → index scale factors
-        (ymin, ymax), (xmin, xmax) = self.bounds
+        (xmin, xmax), (ymin, ymax) = self.bounds
         y_span = ymax - ymin if (ymax - ymin) != 0 else 1.0
         x_span = xmax - xmin if (xmax - xmin) != 0 else 1.0
 
         self._ymin = ymin
         self._xmin = xmin
-        self.yScale = self.rows / y_span
-        self.xScale = self.cols / x_span
+        self.yScale = y_span / self.rows
+        self.xScale = x_span / self.cols
 
         self.startState = None
         self.goal = None
@@ -142,7 +142,7 @@ class GridWindow(QWidget):
         """
         for row in self.gridItems:
             for cell in row:
-                cell.setBrush(QBrush(Qt.white))
+                cell.setBrush(QBrush(Qt.GlobalColor.white))
 
 
     # ======================== HELPERS ========================
@@ -247,20 +247,22 @@ class GridWindow(QWidget):
         
         for obs in self.obstacles:
             self.automaton.applySecuritySpec(obs[0], obs[1])
-        controller = self.automaton.getController(self.continuousToIndex(self.startState), self.goal[0], self.goal[1])
+        controller = self.automaton.getController(
+            self.continuousToIndex(self.startState[0], self.startState[1]), 
+            tuple([self.goal[1][0], self.goal[0][0]]), 
+            tuple([self.goal[1][1], self.goal[0][1]])
+        )
 
         for i in range(0, len(controller)):
             controller[i] = self.indexToState(controller[i])
         self.showPath(controller)
     
     def coordsToIndex(self, x: int, y: int) -> int:
-       
         cols = self.model.stateSpace.resolutions[0]
         return y * cols + x
 
 
     def continuousToIndex(self, xReal: float, yReal: float) -> int:
-        
         xs_bounds = self.model.stateSpace.bounds[0]
         ys_bounds = self.model.stateSpace.bounds[1]
 
@@ -277,7 +279,6 @@ class GridWindow(QWidget):
         return self.coordsToIndex(ix, iy)
 
     def indexToState(self, index: int) -> list:
-    
         cols = self.model.stateSpace.resolutions[0]
 
         x = index % cols   

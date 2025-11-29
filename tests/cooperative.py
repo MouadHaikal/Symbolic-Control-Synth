@@ -5,7 +5,7 @@ from symControl.model.codePrinter import CodePrinter
 from symControl.bindings import Automaton
 
 
-stateSpace       = DiscreteSpace(2, [(0, 300), (0, 300)], [300, 300])
+stateSpace       = DiscreteSpace(2, [(0, 10), (0, 10)], [10, 10])
 inputSpace       = DiscreteSpace(2, [(-1, 1), (-1, 1)], [2, 2])
 disturbanceSpace = ContinuousSpace(2, [(0.5, 0.7), (0.6, 0.7)])
 
@@ -40,9 +40,10 @@ automaton = Automaton(
     printer.printCode()
 )
 
-#automaton.applySecuritySpec((3, 3), (3, 3))
+# automaton.applySecuritySpec((3, 3), (3, 3))
 
-controller = automaton.getController(0, (10,10), (30,30))
+# TODO: bounds checks
+controller = automaton.getController(0, (2,2), (8,8))
 print(controller)
 
 # print(model.transitionFunction.symbolContext)

@@ -1,8 +1,15 @@
 import sys
-import os
 import json
-import csv
 import ast
+
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QFormLayout,
+    QLineEdit, QSpinBox, QLabel, QPushButton, QGroupBox, QFileDialog, QPlainTextEdit
+)
+from PyQt6.QtGui import (
+        QIcon, QFont, QFontDatabase
+)
+
 from symControl.space.continuousSpace import ContinuousSpace
 from symControl.model.codePrinter import CodePrinter
 from symControl.bindings import Automaton
@@ -10,36 +17,24 @@ from gui.gridWindow import GridWindow
 from symControl.space.discreteSpace import DiscreteSpace
 from symControl.model.model import Model
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QFormLayout,
-    QLineEdit, QSpinBox, QLabel, QPushButton, QGroupBox, QFileDialog, QPlainTextEdit
-)
-
-
 
 class InputWindow(QMainWindow):
-    """GUI window for defining and exporting robot model information."""
-
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Robot Model Input")
-        self.setGeometry(100, 100, 600, 550)
 
-        self._initUI()
+        self.initUI()
 
-    def _initUI(self):
-        """
-        Initialize UI components.
-        """
+
+    def initUI(self):
         centralWidget = QWidget()
         self.setCentralWidget(centralWidget)
+
         layout = QVBoxLayout()
         centralWidget.setLayout(layout)
 
         # Create space groups
-        self.stateGroup = self._createSpaceGroup("State Space", "        self.inputGroup = self._createSpaceGroup("Input Space", "e.g., [(-1,1),(0,2)]", "e.g., [10,10]")
+        self.stateGroup = self._createSpaceGroup("State Space", "e.g., [10,10]", "ll")
+        self.inputGroup = self._createSpaceGroup("Input Space", "e.g., [(-1,1),(0,2)]", ";;")
         self.disturbGroup = self._createSpaceGroup("Disturbance Space", "e.g., [(-0.5,0.5),(0,1)]", "e.g., [10,10]")
 
         layout.addWidget(self.stateGroup["group"])
@@ -74,6 +69,7 @@ class InputWindow(QMainWindow):
         self.submitBtn.clicked.connect(self.submitData)
         self.saveBtn.clicked.connect(self.saveInput)
         self.loadBtn.clicked.connect(self.loadInput)
+
 
     def _createSpaceGroup(self, title: str, boundsPlaceholder: str, resPlaceholder: str):
         """
@@ -111,7 +107,7 @@ class InputWindow(QMainWindow):
             return ContinuousSpace(dim, bounds)
 
         discreteStateSpace = parseSpace(self.stateGroup)
-        ContinuousDisturbanceSpace = parseContinuousSpace(self.disturbGroup)
+        continuousDisturbanceSpace = parseContinuousSpace(self.disturbGroup)
         discreteInputSpace = parseSpace(self.inputGroup)
         equationsList = [line.strip() for line in self.equationsInput.toPlainText().splitlines() if line.strip()]
 
@@ -122,7 +118,7 @@ class InputWindow(QMainWindow):
 
         model = Model(
             stateSpace=discreteStateSpace,
-            disturbanceSpace=ContinuousDisturbanceSpace,
+            disturbanceSpace=continuousDisturbanceSpace,
             inputSpace=discreteInputSpace,
             timeStep=tau,
             equations=equationsList
@@ -130,12 +126,12 @@ class InputWindow(QMainWindow):
         printer = CodePrinter(model)
         automaton = Automaton(
             discreteStateSpace,
-            discreteControlSpace,
-            ContinuousDisturbanceSpace,
+            discreteInputSpace,
+            continuousDisturbanceSpace,
             model.transitionFunction.isCooperative,
             model.transitionFunction.disturbJacUpper,
             printer.printCode()
-)
+        )
         self.gridWindow = GridWindow(model,automaton)
         self.setCentralWidget(self.gridWindow)
 
@@ -159,7 +155,7 @@ class InputWindow(QMainWindow):
         }
 
         filePath, _ = QFileDialog.getSaveFileName(
-            self, "Save Input", "", "JSON Files (*.json);;CSV Files (*.csv)"
+            self, "Save Input", "", "JSON Files (*.json);"
         )
         if not filePath:
             return
@@ -167,18 +163,13 @@ class InputWindow(QMainWindow):
         if filePath.endswith(".json"):
             with open(filePath, "w") as f:
                 json.dump(data, f, indent=4)
-        elif filePath.endswith(".csv"):
-            with open(filePath, "w", newline='') as f:
-                writer = csv.writer(f)
-                for key, value in data.items():
-                    writer.writerow([key, value])
 
     def loadInput(self):
         """
         Load input data from JSON or CSV.
         """
         filePath, _ = QFileDialog.getOpenFileName(
-            self, "Load Input", "", "JSON Files (*.json);;CSV Files (*.csv)"
+            self, "Load Input", "", "JSON Files (*.json)"
         )
         if not filePath:
             return
@@ -186,13 +177,6 @@ class InputWindow(QMainWindow):
         if filePath.endswith(".json"):
             with open(filePath, "r") as f:
                 data = json.load(f)
-        elif filePath.endswith(".csv"):
-            data = {}
-            with open(filePath, "r") as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if len(row) == 2:
-                        data[row[0]] = row[1]
 
         def setGroupData(group, dataDict):
             group["dim"].setValue(int(dataDict["dimensions"]))

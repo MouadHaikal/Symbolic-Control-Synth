@@ -1,0 +1,48 @@
+{
+    "stateSpace": {
+        "dimensions": 2,
+        "lowerBound": [
+            0.0,
+            0.0
+        ],
+        "upperBound": [
+            10.0,
+            10.0
+        ],
+        "resolution": [
+            10,
+            10
+        ]
+    },
+    "inputSpace": {
+        "dimensions": 2,
+        "lowerBound": [
+            -1.0,
+            -1.0
+        ],
+        "upperBound": [
+            1.0,
+            1.0
+        ],
+        "resolution": [
+            2,
+            2
+        ]
+    },
+    "disturbanceSpace": {
+        "dimensions": 2,
+        "lowerBound": [
+            0.5,
+            0.6
+        ],
+        "upperBound": [
+            0.7,
+            0.7
+        ]
+    },
+    "equations": [
+        "x1 + tau * (u1 + w1)",
+        "x2 + tau * (u2 + w2)"
+    ],
+    "timeStep": 1.0
+}

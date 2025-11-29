@@ -205,6 +205,20 @@ std::vector<int> Automaton::getController(int startState,
 {
     applyReachabilitySpec(pyTargetLowerBoundCoords, pyTargetUpperBoundCoords);
 
+    std::ofstream logFile("controller.log");
+
+    for (int i = 0; i < table.stateCount; i++) {
+        logFile << i << " " << table.safeStates[i] << " " << controller[i] << std::endl;
+    }
+
+    logFile.flush();
+    logFile.close();
+
+    if (table.safeStates[startState] == -1){
+        printf("No path found\n");
+        return std::vector({-1});
+    }
+
     std::vector<int> statesPath;
     statesPath.push_back(startState);
 
@@ -215,15 +229,12 @@ std::vector<int> Automaton::getController(int startState,
         for(int trans = 0; trans < MAX_TRANSITIONS; trans++) {
             int transIdx = table.get(stateIdx, inputIdx, trans);
             if(transIdx != -1) {
-
-                printf("%d -> ", transIdx);
                 stateIdx = transIdx;
                 statesPath.push_back(stateIdx);
                 break;
             }
         }
     }
-    printf("\n");
 
     return statesPath;
 }
@@ -231,8 +242,6 @@ std::vector<int> Automaton::getController(int startState,
 
 
 void Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords) {
-
-
     std::vector<int> targetLowerBoundCoords = std::vector<int>(stateDim);
     std::vector<int> targetUpperBoundCoords = std::vector<int>(stateDim);
 
