@@ -1,4 +1,4 @@
-from gui.utils import BuildWorker
+from gui.utils import BuildWorker, GetControllerWorker
 from gui.window import Window
 
 import sys
@@ -17,6 +17,7 @@ class App(QApplication):
 
     def run(self) -> None:
         self.automaton = None
+        self.stateSpace = None
 
         # Build main window
         self.window = Window()
@@ -28,6 +29,7 @@ class App(QApplication):
         self.window.statusBar().addPermanentWidget(self.statusBarPermanentLabel)
 
         self.window.buildSignal.connect(self.__onBuildSignaled)
+        self.window.specForm.getConrtollerSignal.connect(self.__onGetControllerSignaled)
 
         self.window.show()
 
@@ -37,6 +39,16 @@ class App(QApplication):
 
         # Run
         sys.exit(self.exec())
+
+    def __onGetControllerSignaled(self, specConfig: dict) -> None:
+        self.window.statusBar().showMessage("Applying specifications...")
+
+        self.__setEnableWindow(False)
+
+        self.getControllerWorker = GetControllerWorker(specConfig, self)
+        self.getControllerWorker.finished.connect(self.__onGetControllerFinished)
+        self.getControllerWorker.failed.connect(self.__onGetControllerFailed)
+        self.getControllerWorker.start()
 
 
     def __onBuildSignaled(self, config: dict) -> None:
@@ -72,6 +84,31 @@ class App(QApplication):
         self.window.statusBar().showMessage(f"Build failed: {error}")
         self.buildWorker.quit()
         self.buildWorker.wait()
+
+
+    def __onGetControllerFinished(self, paths: list[list[int]]) -> None:
+        self.__setEnableWindow(True)
+        self.window.statusBar().showMessage("Controller synthesis complete!", 3000)
+
+        self.getControllerWorker.quit()
+        self.getControllerWorker.wait()
+
+        if paths[0][0] == -1:
+            self.window.statusBar().showMessage("No path found!")
+            return
+
+        # Draw paths
+        for path in paths:
+            self.window.stateSpaceView.drawPath([
+                self.stateSpace.getCellCenter(point) for point in path
+            ])
+
+
+    def __onGetControllerFailed(self, error: str) -> None:
+        self.__setEnableWindow(True)
+        self.window.statusBar().showMessage(f"Controller synthesis failed: {error}")
+        self.getControllerWorker.quit()
+        self.getControllerWorker.wait()
 
 
     def __setEnableWindow(self, enable: bool) -> None:

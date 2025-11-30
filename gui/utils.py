@@ -1,11 +1,14 @@
-from PyQt6.QtCore import Qt, pyqtSignal, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
 from PyQt6.QtWidgets import (
-    QFrame, QGroupBox, QHBoxLayout, QLineEdit, QSpinBox, QWidget, QVBoxLayout, QLabel, QDoubleSpinBox, QAbstractSpinBox
+    QFrame, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QSpinBox, QWidget, 
+    QVBoxLayout, QLabel, QDoubleSpinBox, QAbstractSpinBox, QMessageBox
 )
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
+from matplotlib.text import Annotation
 
 from symControl.space.discreteSpace import DiscreteSpace
 from symControl.space.continuousSpace import ContinuousSpace
@@ -23,7 +26,7 @@ class HSeparator(QFrame):
 
 
 class SpaceForm(QGroupBox):
-    def __init__(self, name: str, symbol: str, isDiscrete: bool) -> None:
+    def __init__(self, name: str, symbol: str, isDiscrete: bool, minDim = 1) -> None:
         super().__init__()
 
         self.setLayout(QVBoxLayout())
@@ -53,7 +56,7 @@ class SpaceForm(QGroupBox):
 
         dimensionsLabel = QLabel("Dimensions :")
         self.dimensionsInput = QSpinBox()
-        self.dimensionsInput.setMinimum(1)
+        self.dimensionsInput.setMinimum(minDim)
         self.dimensionsInput.setMaximum(9)
         self.dimensionsInput.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
 
@@ -199,6 +202,7 @@ class PointInput(QWidget):
             if self.isInteger:
                 spinBox = QSpinBox()
                 spinBox.setMinimum(1)
+                spinBox.setMaximum(100000)
             else:
                 spinBox = QDoubleSpinBox()
                 spinBox.setDecimals(3)
@@ -338,7 +342,7 @@ class BuildWorker(QThread):
 
         
         
-        stateSpace = DiscreteSpace(
+        self.app.stateSpace = DiscreteSpace(
             self.config["stateSpace"]["dimensions"],
             stateSpaceBounds,
             self.config["stateSpace"]["resolution"]
@@ -357,7 +361,7 @@ class BuildWorker(QThread):
 
 
         model = Model(
-            stateSpace,            
+            self.app.stateSpace,            
             inputSpace,        
             disturbanceSpace,
             self.config["timeStep"],
@@ -366,7 +370,7 @@ class BuildWorker(QThread):
 
 
         self.app.automaton = Automaton(
-            stateSpace,
+            self.app.stateSpace,
             inputSpace,
             disturbanceSpace,
             model.transitionFunction.isCooperative,
@@ -413,17 +417,59 @@ class SpaceView(QWidget):
         self.ax.set_ylabel(f"{self.symbol}$_2$")
         self.ax.grid(True, alpha=0.2)
         self.canvas.draw()
+
+
+    def drawRegions(self, specConfig: dict) -> None:
+        self.__drawPoint(specConfig["startPoint"], "blue", "Start")
+        self.__drawRegion(specConfig["target"], "green")
+        
+        for obstacle in specConfig["obstacles"]:
+            self.__drawRegion(obstacle, "red")
+
+        self.canvas.draw()
+
+    def drawPath(self, points: list[tuple[int, ...]], color = "blue") -> None:
+        xs = [pt[0] for pt in points]
+        ys = [pt[1] for pt in points]
+
+        self.ax.plot(xs, ys, color=color, linewidth=0.25, zorder=10)
+        
+        self.canvas.draw()
         
 
-class SpecificationForm(QGroupBox):
+
+    def __drawRegion(self, bounds: dict, color: str) -> None:
+        x = bounds["lowerBound"][0]
+        y = bounds["lowerBound"][1]
+        width  = bounds["upperBound"][0] - x
+        height = bounds["upperBound"][1] - y
+
+        rect = Rectangle((x, y), width, height, linewidth=2, edgecolor=color, facecolor=color, alpha=0.4)
+        self.ax.add_patch(rect)
+
+    def __drawPoint(self, point: list, color: str, label: str) -> None:
+        x, y = point[0], point[1]
+        self.ax.scatter(x, y, s=20, c="blue", marker='o', zorder=5)
+        
+        self.ax.annotate(label, (x, y),
+                        xytext=(0, -15), textcoords='offset pixels',
+                        ha='center', va='top', fontsize=10,
+                        color= color, weight='bold')
+        
+
+class SpecificationForm(QWidget):
+    drawSignal = pyqtSignal(dict)
+    getConrtollerSignal = pyqtSignal(dict)
+
     def __init__(self) -> None:
         super().__init__()
         self.setLayout(QVBoxLayout())
         # addStretch
 
+        self.obstacles = [] # obstacle RegionInput objects
 
         # ========== Styling ==========
-        self.layout().setSpacing(0)
+        self.layout().setSpacing(20)
         self.layout().setContentsMargins(0,0,0,0)
         
 
@@ -433,44 +479,238 @@ class SpecificationForm(QGroupBox):
             if child.widget():
                 child.widget().deleteLater()
 
+        self.topContainer = QGroupBox()
+        self.bottomContainer = QGroupBox()
+        self.finalButton = QPushButton("Apply")
+        self.finalButton.clicked.connect(self.__onApplyClicked)
+        self.layout().addWidget(self.topContainer)
+        self.layout().addWidget(self.bottomContainer)
+        self.layout().addWidget(self.finalButton)
 
 
-        startState = QWidget()
-        targetLowerBound = QWidget()
-        targetUpperBound = QWidget()
+        self.mockDimInput = QSpinBox()
+        self.mockDimInput.setValue(spaceConfig["dimensions"])
 
-        self.layout().addWidget(startState)
-        self.layout().addWidget(targetLowerBound)
-        self.layout().addWidget(targetUpperBound)
+        # =================== Top container ===================
+        self.topContainer.setLayout(QVBoxLayout())
+
+        startPoint = QWidget()
+        self.targetRegion = RegionInput("Target", self.mockDimInput)
+
+        self.topContainer.layout().addWidget(startPoint)
+        self.topContainer.layout().addWidget(self.targetRegion)
+        self.topContainer.layout().addWidget(HSeparator())
+
+
+        # === Start Point ===
+        startPoint.setLayout(QHBoxLayout())
+
+        startPointLabel = QLabel("Start point :")
+        self.startPointInput = PointInput(self.mockDimInput)
+
+        startPoint.layout().addWidget(startPointLabel, stretch=0)
+        startPoint.layout().addWidget(self.startPointInput, stretch=1)
 
 
 
-        mockDimInput = QSpinBox()
-        mockDimInput.setValue(spaceConfig["dimensions"])
+        # =================== Bottom container ===================
+        self.bottomContainer.setLayout(QVBoxLayout())
 
-        startState.setLayout(QHBoxLayout())
+        obstacleButtons = QWidget()
+        self.obstacleScrollArea = QScrollArea()
 
-        startStateLabel = QLabel("Start state :")
-        self.startStateInput = PointInput(mockDimInput)
+        self.bottomContainer.layout().addWidget(obstacleButtons)
+        self.bottomContainer.layout().addWidget(self.obstacleScrollArea)
 
-        startState.layout().addWidget(startStateLabel, stretch=0)
-        startState.layout().addWidget(self.startStateInput, stretch=1)
+        # Obstacle buttons
+        addObstacleButton = QPushButton("Add Obstacle")
+        addObstacleButton.clicked.connect(self.__onAddObstacleClicked)
+        resetObstaclesButton = QPushButton("Reset")
+        resetObstaclesButton.clicked.connect(self.__onResetObstaclesClicked)
+
+        obstacleButtons.setLayout(QHBoxLayout())
+        obstacleButtons.layout().addWidget(addObstacleButton)
+        obstacleButtons.layout().addWidget(resetObstaclesButton)
+
+
+
+        # Scroll area
+        self.obstacleContainer = QWidget()
+
+        self.obstacleScrollArea.setWidgetResizable(True)
+        self.obstacleScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.obstacleScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.obstacleScrollArea.setWidget(self.obstacleContainer)
+
+
+        self.obstacleContainer.setLayout(QVBoxLayout())
+        self.obstacleContainer.layout().addStretch()
+
+        self.obstacleContainer.layout().setContentsMargins(0,0,0,0)
+
+
+    def __onAddObstacleClicked(self) -> None:
+        obstacle = RegionInput(f"Obstacle {len(self.obstacles)+1}", self.mockDimInput)
+        self.obstacles.append(obstacle)
+
+
+        # Remove stretch (last item)
+        self.obstacleContainer.layout().takeAt(self.obstacleContainer.layout().count() - 1)
+
+        self.obstacleContainer.layout().addWidget(obstacle)
+        self.obstacleContainer.layout().addStretch()
+
+
+        # Scroll to bottom
+        self.obstacleContainer.updateGeometry()
+        self.obstacleScrollArea.updateGeometry()
+
+
+        QTimer.singleShot(0, lambda: self.obstacleScrollArea.verticalScrollBar().setValue(
+            self.obstacleScrollArea.verticalScrollBar().maximum()
+        ))
+
+    def __onResetObstaclesClicked(self) -> None:
+        if not len(self.obstacles):
+            return 
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Reset",
+            "Reset all obstacles?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+
+        for obstacle in self.obstacles:
+              obstacle.deleteLater()
+          
+        self.obstacles.clear()
+
+    def __onApplyClicked(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Confirm Apply",
+            "Apply and lock specifications?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        self.topContainer.setDisabled(True)
+        self.bottomContainer.setDisabled(True)
+        self.finalButton.setText("Get Controller")
+        self.finalButton.clicked.disconnect()
+        self.finalButton.clicked.connect(self.__onGetControllerClicked)
+
+        specConfig = {
+            "startPoint": self.startPointInput.getValue(),
+            "target": self.targetRegion.getValue(),
+            "obstacles": [
+                obstacle.getValue()
+                for obstacle in self.obstacles
+            ]
+        }
+
+        self.drawSignal.emit(specConfig)
+
+    def __onGetControllerClicked(self) -> None:
+        self.finalButton.setDisabled(True)
+
+        specConfig = {
+            "startPoint": self.startPointInput.getValue(),
+            "target": self.targetRegion.getValue(),
+            "obstacles": [
+                obstacle.getValue()
+                for obstacle in self.obstacles
+            ]
+        }
+
+        self.getConrtollerSignal.emit(specConfig)
+
         
+class RegionInput(QGroupBox):
+    def __init__(self, name: str, dimensionsInputBox: QSpinBox) -> None:
+        super().__init__()
+        self.setLayout(QVBoxLayout())
 
-        targetLowerBound.setLayout(QHBoxLayout())
+        self.layout().addWidget(QLabel(name))
 
-        targetLowerBoundLabel = QLabel("Target lower bound :")
-        self.targetLowerBoundInput = PointInput(mockDimInput)
+        lowerBound = QWidget()
+        upperBound = QWidget()
 
-        targetLowerBound.layout().addWidget(targetLowerBoundLabel, stretch=0)
-        targetLowerBound.layout().addWidget(self.targetLowerBoundInput, stretch=1)
+        self.layout().addWidget(lowerBound)
+        self.layout().addWidget(upperBound)
+
+        lowerBoundLabel = QLabel("Lower bound :")
+        upperBoundLabel = QLabel("Upper bound :")
+
+        self.lowerBoundInput = PointInput(dimensionsInputBox)
+        self.upperBoundInput = PointInput(dimensionsInputBox)
+
+        lowerBound.setLayout(QHBoxLayout())
+        upperBound.setLayout(QHBoxLayout())
+
+        lowerBound.layout().addWidget(lowerBoundLabel, stretch=0)
+        upperBound.layout().addWidget(upperBoundLabel, stretch=0)
+
+        lowerBound.layout().addWidget(self.lowerBoundInput, stretch=1)
+        upperBound.layout().addWidget(self.upperBoundInput, stretch=1)
 
 
-        targetUpperBound.setLayout(QHBoxLayout())
 
-        targetUpperBoundLabel = QLabel("Target upper bound :")
-        self.targetUpperBoundInput = PointInput(mockDimInput)
+        # ========== Styling ==========
 
-        targetUpperBound.layout().addWidget(targetUpperBoundLabel, stretch=0)
-        targetUpperBound.layout().addWidget(self.targetUpperBoundInput, stretch=1)
+        lowerBound.layout().setSpacing(0)
+        lowerBound.layout().setContentsMargins(0,0,0,0)
+
+        upperBound.layout().setSpacing(0)
+        upperBound.layout().setContentsMargins(0,0,0,0)
+
+
+        self.layout().setSpacing(0)
+        self.setFixedHeight(120)
+
+
+    def getValue(self) -> dict:
+        return {
+            "lowerBound": self.lowerBoundInput.getValue(),
+            "upperBound": self.upperBoundInput.getValue()
+        }
+
+
+class GetControllerWorker(QThread):
+    finished = pyqtSignal(list)  # emitted when done - returns paths
+    failed = pyqtSignal(str)  # emitted on error
+
+    def __init__(self, specConfig: dict, app):
+        super().__init__()
+        self.specConfig = specConfig
+        self.app = app
+
+
+    def run(self) -> None:
+        try:
+            self.__run()
+        except Exception as e:
+            self.failed.emit(str(e))
+
+
+    def __run(self) -> None:
+        for obstacle in self.specConfig["obstacles"]:
+            self.app.automaton.applySecuritySpec(
+                self.app.stateSpace.getCellCoords(obstacle["lowerBound"]),
+                self.app.stateSpace.getCellCoords(obstacle["upperBound"])
+            )
+
+        paths = self.app.automaton.getController(
+            self.app.stateSpace.getCellCoords(self.specConfig["startPoint"]),
+            self.app.stateSpace.getCellCoords(self.specConfig["target"]["lowerBound"]),
+            self.app.stateSpace.getCellCoords(self.specConfig["target"]["upperBound"]),
+            20
+        )
+
+        self.finished.emit(paths)
 

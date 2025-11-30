@@ -51,6 +51,21 @@ class DiscreteSpace(ContinuousSpace):
 
         return coords
 
+    def getCellCenter(self, cellIdx: int) -> Tuple[float, ...]:
+        cellCenter = [0.0] * self.dimensions
+        resProd = self.cellCount;
+
+        for i in range(self.dimensions-1, -1, -1):
+            resProd //= self.resolutions[i];
+
+            idx = cellIdx // resProd;
+            cellIdx -= idx * resProd;
+
+            cellCenter[i] = self.bounds[i][0] + self.cellSize[i] * (.5 + idx);
+        
+
+        return tuple(cellCenter)
+
 
     @property
     def resolutions(self):

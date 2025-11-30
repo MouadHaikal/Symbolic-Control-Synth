@@ -20,7 +20,10 @@ public:
 
 
     void applySecuritySpec(py::tuple pyObstacleLowerBoundCoords, py::tuple pyObstacleUpperBoundCoords);
-    std::vector<int> getController(int startState, py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords);
+    std::vector<std::vector<int>> getController(py::tuple pyStartStateCoords, 
+                                                py::tuple pyTargetLowerBoundCoords, 
+                                                py::tuple pyTargetUpperBoundCoords, 
+                                                int pathCount);
 
     
 private:
@@ -30,6 +33,8 @@ private:
     std::vector<int>    controller;
     
 private:
+    std::vector<int> getRandomPath(int startStateIdx) const;
+
     void applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords);
     std::vector<int> floodFill(const std::vector<int>&  lowerBoundCoords, const std::vector<int>&  upperBoundCoords);
 

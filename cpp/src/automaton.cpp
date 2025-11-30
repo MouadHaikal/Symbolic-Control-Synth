@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <unordered_set>
 #include <vector>
+#include <random>
 
 
 Automaton::Automaton(py::object  stateSpace,       // DiscreteSpace
@@ -199,9 +200,10 @@ void Automaton::applySecuritySpec(py::tuple pyObstacleLowerBoundCoords, py::tupl
     table.precomputeTransitions();
 }
 
-std::vector<int> Automaton::getController(int startState, 
-                                          py::tuple pyTargetLowerBoundCoords, 
-                                          py::tuple pyTargetUpperBoundCoords)
+std::vector<std::vector<int>> Automaton::getController(py::tuple pyStartStateCoords, 
+                                                       py::tuple pyTargetLowerBoundCoords, 
+                                                       py::tuple pyTargetUpperBoundCoords, 
+                                                       int pathCount)
 {
     applyReachabilitySpec(pyTargetLowerBoundCoords, pyTargetUpperBoundCoords);
 
@@ -214,32 +216,56 @@ std::vector<int> Automaton::getController(int startState,
     logFile.flush();
     logFile.close();
 
-    if (table.safeStates[startState] == -1){
+
+    int startStateIdx = 0;
+    for (int i = 0; i < stateDim; ++i) 
+        startStateIdx += pyStartStateCoords[i].cast<int>() * resolutionStride[i];
+
+
+    if (table.safeStates[startStateIdx] == -1){
         printf("No path found\n");
-        return std::vector({-1});
+        return std::vector({std::vector({-1})});
     }
 
+    std::vector<std::vector<int>> statePaths;
+
+    for (int _ = 0; _ < pathCount; _++) {
+        statePaths.push_back(getRandomPath(startStateIdx));
+    }
+
+    return statePaths;
+}
+
+
+std::vector<int> Automaton::getRandomPath(int startStateIdx) const{
     std::vector<int> statesPath;
-    statesPath.push_back(startState);
+    statesPath.push_back(startStateIdx);
 
-    int stateIdx = startState;
+    int stateIdx = startStateIdx;
+    std::random_device rd;
+    std::mt19937 gen(rd());
 
-    while(table.safeStates[stateIdx] != 0) { // this means we haven't reached a target
+    while(table.safeStates[stateIdx] != 0) { // while not a target cell
         int inputIdx = controller[stateIdx];
+
+        // Collect all valid transitions
+        std::vector<int> validTransitions;
         for(int trans = 0; trans < MAX_TRANSITIONS; trans++) {
             int transIdx = table.get(stateIdx, inputIdx, trans);
             if(transIdx != -1) {
-                stateIdx = transIdx;
-                statesPath.push_back(stateIdx);
-                break;
+                validTransitions.push_back(transIdx);
             }
         }
+        
+        // Pick random one
+        std::uniform_int_distribution<> dis(0, validTransitions.size() - 1);
+        int randomIdx = dis(gen);
+        stateIdx = validTransitions[randomIdx];
+        statesPath.push_back(stateIdx);
     }
 
     return statesPath;
 }
-
-
 
 void Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tuple pyTargetUpperBoundCoords) {
     std::vector<int> targetLowerBoundCoords = std::vector<int>(stateDim);
@@ -290,7 +316,7 @@ void Automaton::applyReachabilitySpec(py::tuple pyTargetLowerBoundCoords, py::tu
     }
 }
 
-std::vector<int> Automaton::floodFill(const std::vector<int>&  lowerBoundCoords, const std::vector<int>&  upperBoundCoords){
+std::vector<int> Automaton::floodFill(const std::vector<int>& lowerBoundCoords, const std::vector<int>& upperBoundCoords){
     std::vector<int> curCoords{stateDim};
     for (int i = 0; i < stateDim; ++i) 
         curCoords[i] = lowerBoundCoords[i];

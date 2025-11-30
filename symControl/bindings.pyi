@@ -14,11 +14,12 @@ class Automaton:
                  buildAutomatonCode: str) -> None: ...
 
     def applySecuritySpec(self,
-                          pyObstacleLowerBoundCoords: tuple[float, ...],
-                          pyObstacleUpperBoundCoords: tuple[float, ...]) -> None: ...
+                          pyObstacleLowerBoundCoords: tuple[int, ...],
+                          pyObstacleUpperBoundCoords: tuple[int, ...]) -> None: ...
 
     def getController(self,
-                      startState: int,
-                      pyTargetLowerBoundCoords: tuple[float, ...],
-                      pyTargetUpperBoundCoords: tuple[float, ...]) -> None: ...
+                      pyStartStateCoords:       tuple[int, ...],
+                      pyTargetLowerBoundCoords: tuple[int, ...],
+                      pyTargetUpperBoundCoords: tuple[int, ...],
+                      pathCount:                int) -> list[list[int]]: ...
                       

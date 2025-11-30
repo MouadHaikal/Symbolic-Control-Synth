@@ -61,7 +61,7 @@ class Window(QMainWindow):
         spaceConfigContent.setLayout(QHBoxLayout())
         spaceConfigContent.layout().setSpacing(10)
 
-        self.stateSpaceForm   = SpaceForm("State", STATE, isDiscrete=True)
+        self.stateSpaceForm   = SpaceForm("State", STATE, isDiscrete=True, minDim=2)
         self.inputSpaceForm   = SpaceForm("Input", INPUT, isDiscrete=True)
         self.disturbSpaceForm = SpaceForm("Disturbance", DISTURBANCE, isDiscrete=False)
 
@@ -147,6 +147,8 @@ class Window(QMainWindow):
 
         self.stateSpaceView = SpaceView(STATE)
         self.specForm = SpecificationForm()
+
+        self.specForm.drawSignal.connect(self.stateSpaceView.drawRegions)
 
         specTab.layout().addWidget(self.stateSpaceView, stretch=2)
         specTab.layout().addWidget(self.specForm, stretch=1)

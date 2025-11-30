@@ -14,8 +14,6 @@ name = "sym-control"
 dynamic = ["version"]
 dependencies = [
     "numpy",
-    "numba",
-    "pygame",
     "sympy",
     "PyQt6",
     "matplotlib",
