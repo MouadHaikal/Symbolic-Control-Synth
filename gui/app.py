@@ -26,7 +26,7 @@ class App(QApplication):
         self.window = Window()
         self.window.setWindowTitle("Symbolic Control Synth")
         self.window.setWindowIcon(QIcon("resources/icon.png"))
-        self.window.setGeometry(700, 300, 600, 550)
+        self.window.setGeometry(150, 150, 1400, 800)
         self.window.setStatusBar(QStatusBar())
         self.statusBarPermanentLabel = QLabel("")
         self.window.statusBar().addPermanentWidget(self.statusBarPermanentLabel)
@@ -79,6 +79,11 @@ class App(QApplication):
             self.stateSpace.getCellCenter(pt)[:2]
                 for pt in self.simulationPath
         ]
+
+        print("start: ", start)
+        print("obstacles: ", obstacles)
+        print("target: ", target)
+        print("path: ", path)
 
         simulateRobot(start, obstacles, target, path)
 
