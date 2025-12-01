@@ -76,13 +76,22 @@ class TransitionFunction:
             Tuple | None: Gradients of state Jacobian entries relative to state, input, and disturbance variables, or None if cooperative.
             Tuple: Upper bounds on absolute disturbance Jacobian entries, or empty tuple if cooperative.
         """
+        def removeMod(expr):
+            """
+            Drops any occurrence of mod operator to permits the computation of the jacobian with ease
+            """
+            return expr.replace(
+                lambda e: isinstance(e, sp.Mod),
+                lambda e: e.args[0]   # remove mod by keeping only the dividend
+            )
+
 
         stateJac = sp.Matrix([
             [
                 sp.diff(eq, self.symbolContext[f"{STATE}{i+1}"])
                     for i in range(self.dimensions[STATE])
             ] 
-            for eq in self.equations
+            for eq in [removeMod(eq) for eq in self.equations]
         ])
 
         disturbJac = sp.Matrix([
@@ -90,7 +99,7 @@ class TransitionFunction:
                 sp.diff(eq, self.symbolContext[f"{DISTURBANCE}{i+1}"]) 
                     for i in range(self.dimensions[DISTURBANCE])
             ] 
-            for eq in self.equations
+            for eq in [removeMod(eq) for eq in self.equations]
         ])
 
 
