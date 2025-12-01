@@ -18,6 +18,7 @@ dependencies = [
     "PyQt6",
     "matplotlib",
     "scipy",
+    "pybullet",
     "pybind11"
 ]
 license = "MIT"
