@@ -479,6 +479,9 @@ class SpecificationForm(QWidget):
             if child.widget():
                 child.widget().deleteLater()
 
+        self.obstacles.clear()
+
+
         self.topContainer = QGroupBox()
         self.bottomContainer = QGroupBox()
         self.finalButton = QPushButton("Apply")
@@ -588,6 +591,11 @@ class SpecificationForm(QWidget):
               obstacle.deleteLater()
           
         self.obstacles.clear()
+
+        while self.obstacleContainer.layout().count() > 1:
+            child = self.obstacleContainer.layout().takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
     def __onApplyClicked(self) -> None:
         reply = QMessageBox.question(
