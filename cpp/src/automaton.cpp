@@ -7,8 +7,6 @@
 #include <nvrtc.h>
 #include <cstddef>
 #include <queue>
-#include <fstream>
-#include <iomanip>
 #include <unordered_set>
 #include <vector>
 #include <random>
@@ -51,105 +49,105 @@ Automaton::Automaton(py::object  stateSpace,       // DiscreteSpace
 
 
 
-    std::string logFilePath = "table.log";
-    std::ofstream logFile(logFilePath);
-
-    if (!logFile.is_open()) {
-        std::cerr << "Error: Could not open log file at " << logFilePath << std::endl;
-        return;
-    }
-
-    logFile << "\n" << std::string(80, '=') << "\n";
-    logFile << "TRANSITION TABLES SUMMARY\n";
-    logFile << std::string(80, '=') << "\n\n";
-
-    // ============== FORWARD TRANSITIONS (hData) ==============
-    logFile << "FORWARD TRANSITIONS (hData)\n";
-    logFile << "- Represents: For each (state, input) pair, which states can be reached\n";
-    logFile << std::string(80, '-') << "\n\n";
-
-    for (int state = 0; state < table.stateCount; ++state) {
-        for (int input = 0; input < table.inputCount; ++input) {
-            // Calculate the block index in the flattened array
-            // Block structure: [state0-input0 | state0-input1 | ... | stateN-inputM]
-            int blockIndex = (state * table.inputCount + input) * MAX_TRANSITIONS;
-
-            logFile << "State " << std::setw(3) << state 
-                << " | Input " << std::setw(3) << input 
-                << "   ==>   : ";
-
-            // Iterate through the block and collect non-negative values
-            std::vector<int> destinations;
-            for (int i = 0; i < MAX_TRANSITIONS; ++i) {
-                int destState = table.hData[blockIndex + i];
-                if (destState >= 0) {  // Skip -1 entries (no transition)
-                    destinations.push_back(destState);
-                }
-            }
-
-            // Print destinations or indicate no transitions
-            if (destinations.empty()) {
-                logFile << "[ None ]\n";
-            } else {
-                logFile << "[ ";
-                for (size_t i = 0; i < destinations.size(); ++i) {
-                    logFile << destinations[i];
-                    if (i < destinations.size() - 1) {
-                        logFile << ", ";
-                    }
-                }
-                logFile << " ]\n";
-            }
-        }
-    }
-
-    logFile << "\n";
-
-    // ============== REVERSE TRANSITIONS (hRevData) ==============
-    logFile << "REVERSE TRANSITIONS (hRevData)\n";
-    logFile << "- Represents: For each (state, input) pair, which states can reach it\n";
-    logFile << std::string(80, '-') << "\n\n";
-
-    for (int state = 0; state < table.stateCount; ++state) {
-        for (int input = 0; input < table.inputCount; ++input) {
-            // Calculate the block index in the flattened array
-            // Same structure as hData but with predecessor counts
-            int blockIndex = (state * table.inputCount + input) * MAX_PREDECESSORS;
-
-            logFile << "State " << std::setw(3) << state 
-                << " | Input " << std::setw(3) << input 
-                << "   <==   : ";
-
-            // Iterate through the block and collect non-negative values
-            std::vector<int> predecessors;
-            for (int i = 0; i < MAX_PREDECESSORS; ++i) {
-                int srcState = table.hRevData[blockIndex + i];
-                if (srcState >= 0) {  // Skip -1 entries (no transition)
-                    predecessors.push_back(srcState);
-                }
-            }
-
-            // Print predecessors or indicate no transitions
-            if (predecessors.empty()) {
-                logFile << "[ None ]\n";
-            } else {
-                logFile << "[ ";
-                for (size_t i = 0; i < predecessors.size(); ++i) {
-                    logFile << predecessors[i];
-                    if (i < predecessors.size() - 1) {
-                        logFile << ", ";
-                    }
-                }
-                logFile << " ]\n";
-            }
-        }
-    }
-
-    logFile << "\n" << std::string(80, '=') << "\n\n";
-    logFile.flush();
-    logFile.close();
-
-    std::cout << "Transition tables printed to: " << logFilePath << std::endl;
+    // std::string logFilePath = "table.log";
+    // std::ofstream logFile(logFilePath);
+    //
+    // if (!logFile.is_open()) {
+    //     std::cerr << "Error: Could not open log file at " << logFilePath << std::endl;
+    //     return;
+    // }
+    //
+    // logFile << "\n" << std::string(80, '=') << "\n";
+    // logFile << "TRANSITION TABLES SUMMARY\n";
+    // logFile << std::string(80, '=') << "\n\n";
+    //
+    // // ============== FORWARD TRANSITIONS (hData) ==============
+    // logFile << "FORWARD TRANSITIONS (hData)\n";
+    // logFile << "- Represents: For each (state, input) pair, which states can be reached\n";
+    // logFile << std::string(80, '-') << "\n\n";
+    //
+    // for (int state = 0; state < table.stateCount; ++state) {
+    //     for (int input = 0; input < table.inputCount; ++input) {
+    //         // Calculate the block index in the flattened array
+    //         // Block structure: [state0-input0 | state0-input1 | ... | stateN-inputM]
+    //         int blockIndex = (state * table.inputCount + input) * MAX_TRANSITIONS;
+    //
+    //         logFile << "State " << std::setw(3) << state 
+    //             << " | Input " << std::setw(3) << input 
+    //             << "   ==>   : ";
+    //
+    //         // Iterate through the block and collect non-negative values
+    //         std::vector<int> destinations;
+    //         for (int i = 0; i < MAX_TRANSITIONS; ++i) {
+    //             int destState = table.hData[blockIndex + i];
+    //             if (destState >= 0) {  // Skip -1 entries (no transition)
+    //                 destinations.push_back(destState);
+    //             }
+    //         }
+    //
+    //         // Print destinations or indicate no transitions
+    //         if (destinations.empty()) {
+    //             logFile << "[ None ]\n";
+    //         } else {
+    //             logFile << "[ ";
+    //             for (size_t i = 0; i < destinations.size(); ++i) {
+    //                 logFile << destinations[i];
+    //                 if (i < destinations.size() - 1) {
+    //                     logFile << ", ";
+    //                 }
+    //             }
+    //             logFile << " ]\n";
+    //         }
+    //     }
+    // }
+    //
+    // logFile << "\n";
+    //
+    // // ============== REVERSE TRANSITIONS (hRevData) ==============
+    // logFile << "REVERSE TRANSITIONS (hRevData)\n";
+    // logFile << "- Represents: For each (state, input) pair, which states can reach it\n";
+    // logFile << std::string(80, '-') << "\n\n";
+    //
+    // for (int state = 0; state < table.stateCount; ++state) {
+    //     for (int input = 0; input < table.inputCount; ++input) {
+    //         // Calculate the block index in the flattened array
+    //         // Same structure as hData but with predecessor counts
+    //         int blockIndex = (state * table.inputCount + input) * MAX_PREDECESSORS;
+    //
+    //         logFile << "State " << std::setw(3) << state 
+    //             << " | Input " << std::setw(3) << input 
+    //             << "   <==   : ";
+    //
+    //         // Iterate through the block and collect non-negative values
+    //         std::vector<int> predecessors;
+    //         for (int i = 0; i < MAX_PREDECESSORS; ++i) {
+    //             int srcState = table.hRevData[blockIndex + i];
+    //             if (srcState >= 0) {  // Skip -1 entries (no transition)
+    //                 predecessors.push_back(srcState);
+    //             }
+    //         }
+    //
+    //         // Print predecessors or indicate no transitions
+    //         if (predecessors.empty()) {
+    //             logFile << "[ None ]\n";
+    //         } else {
+    //             logFile << "[ ";
+    //             for (size_t i = 0; i < predecessors.size(); ++i) {
+    //                 logFile << predecessors[i];
+    //                 if (i < predecessors.size() - 1) {
+    //                     logFile << ", ";
+    //                 }
+    //             }
+    //             logFile << " ]\n";
+    //         }
+    //     }
+    // }
+    //
+    // logFile << "\n" << std::string(80, '=') << "\n\n";
+    // logFile.flush();
+    // logFile.close();
+    //
+    // std::cout << "Transition tables printed to: " << logFilePath << std::endl;
 }
 
 
@@ -207,14 +205,14 @@ std::vector<std::vector<int>> Automaton::getController(py::tuple pyStartStateCoo
 {
     applyReachabilitySpec(pyTargetLowerBoundCoords, pyTargetUpperBoundCoords);
 
-    std::ofstream logFile("controller.log");
-
-    for (int i = 0; i < table.stateCount; i++) {
-        logFile << i << " " << table.safeStates[i] << " " << controller[i] << std::endl;
-    }
-
-    logFile.flush();
-    logFile.close();
+    // std::ofstream logFile("controller.log");
+    //
+    // for (int i = 0; i < table.stateCount; i++) {
+    //     logFile << i << " " << table.safeStates[i] << " " << controller[i] << std::endl;
+    // }
+    //
+    // logFile.flush();
+    // logFile.close();
 
 
     int startStateIdx = 0;

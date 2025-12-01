@@ -62,9 +62,9 @@ class DiscreteSpace(ContinuousSpace):
             cellIdx -= idx * resProd;
 
             cellCenter[i] = self.bounds[i][0] + self.cellSize[i] * (.5 + idx);
-        
 
         return tuple(cellCenter)
+
 
 
     @property

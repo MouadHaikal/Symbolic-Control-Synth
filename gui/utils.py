@@ -460,6 +460,7 @@ class SpaceView(QWidget):
 class SpecificationForm(QWidget):
     drawSignal = pyqtSignal(dict)
     getConrtollerSignal = pyqtSignal(dict)
+    viewSimulationSignal = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -534,7 +535,6 @@ class SpecificationForm(QWidget):
         obstacleButtons.setLayout(QHBoxLayout())
         obstacleButtons.layout().addWidget(addObstacleButton)
         obstacleButtons.layout().addWidget(resetObstaclesButton)
-
 
 
         # Scroll area
@@ -637,6 +637,15 @@ class SpecificationForm(QWidget):
         }
 
         self.getConrtollerSignal.emit(specConfig)
+
+        self.finalButton.setText("View Simulation")
+        self.finalButton.clicked.disconnect()
+        self.finalButton.clicked.connect(self.__onViewSimulationClicked)
+        self.finalButton.setEnabled(True)
+
+    def __onViewSimulationClicked(self) -> None:
+        self.finalButton.setDisabled(True)
+        self.viewSimulationSignal.emit()
 
         
 class RegionInput(QGroupBox):

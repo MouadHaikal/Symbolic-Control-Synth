@@ -1,3 +1,4 @@
+from gui.robotSimulation import simulateRobot
 from gui.utils import BuildWorker, GetControllerWorker
 from gui.window import Window
 
@@ -18,6 +19,8 @@ class App(QApplication):
     def run(self) -> None:
         self.automaton = None
         self.stateSpace = None
+        self.specConfig = dict()
+        self.simulationPath = []
 
         # Build main window
         self.window = Window()
@@ -30,6 +33,7 @@ class App(QApplication):
 
         self.window.buildSignal.connect(self.__onBuildSignaled)
         self.window.specForm.getConrtollerSignal.connect(self.__onGetControllerSignaled)
+        self.window.specForm.viewSimulationSignal.connect(self.__onViewSimulationSignaled)
 
         self.window.show()
 
@@ -43,12 +47,42 @@ class App(QApplication):
     def __onGetControllerSignaled(self, specConfig: dict) -> None:
         self.window.statusBar().showMessage("Applying specifications...")
 
+        self.specConfig = specConfig
+
         self.__setEnableWindow(False)
 
         self.getControllerWorker = GetControllerWorker(specConfig, self)
         self.getControllerWorker.finished.connect(self.__onGetControllerFinished)
         self.getControllerWorker.failed.connect(self.__onGetControllerFailed)
         self.getControllerWorker.start()
+
+    def __onViewSimulationSignaled(self) -> None:
+        if self.simulationPath[0] == -1:
+            return
+
+        start = self.stateSpace.getCellCoords(self.specConfig["startPoint"])[:2]
+
+        obstacles = [
+            [
+                self.stateSpace.getCellCoords(obstacle["lowerBound"])[:2],
+                self.stateSpace.getCellCoords(obstacle["upperBound"])[:2]
+            ]
+            for obstacle in self.specConfig["obstacles"]
+        ]
+
+        target = [
+            self.stateSpace.getCellCoords(self.specConfig["target"]["lowerBound"])[:2],
+            self.stateSpace.getCellCoords(self.specConfig["target"]["upperBound"])[:2]
+        ]
+
+        path = [
+            self.stateSpace.getCellCenter(pt)[:2]
+                for pt in self.simulationPath
+        ]
+
+        simulateRobot(start, obstacles, target, path)
+
+        
 
 
     def __onBuildSignaled(self, config: dict) -> None:
@@ -92,6 +126,8 @@ class App(QApplication):
 
         self.getControllerWorker.quit()
         self.getControllerWorker.wait()
+
+        self.simulationPath = paths[0]
 
         if paths[0][0] == -1:
             self.window.statusBar().showMessage("No path found!")

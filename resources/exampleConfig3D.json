@@ -4,17 +4,17 @@
         "lowerBound": [
             0.0,
             0.0,
-            -12.0
+            -3.14
         ],
         "upperBound": [
             10.0,
             10.0,
-            12.0
+            3.14
         ],
         "resolution": [
             100,
             100,
-            60
+            30
         ]
     },
     "inputSpace": {
@@ -47,8 +47,8 @@
     },
     "equations": [
         "x1 + tau*(u1 * cos(x3) + w1)",
-        "x2+ tau*(u2 * sin(x2) + w2)",
-        "x3 + tau*(u2 + w3)"
+        "x2+ tau*(u1 * sin(x3) + w2)",
+        "(x3 + tau*(u2 + w3)) % (2 * 3,14)"
     ],
     "timeStep": 1.0
 }
