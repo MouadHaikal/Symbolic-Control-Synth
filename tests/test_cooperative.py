@@ -5,9 +5,10 @@ from symControl.model.model import Model;
 from symControl.model.codePrinter import CodePrinter;
 from symControl.bindings import Automaton;
 
-state = DiscreteSpace(3, ((0, 10), (0, 10), (-3.14, 3.14)), (100, 100, 30));
-input = DiscreteSpace(2, ((0.25, 1), (-1, 1)), (3, 5));
-disturbance = ContinuousSpace(3, ((0, 0.05), (0, 0.05), (0, 0.05)));
+# Define spaces
+state = DiscreteSpace(3, ((0, 10), (0, 10), (-3.14, 3.14)), (60, 60, 30))
+input = DiscreteSpace(2, ((0.25, 1), (-1, 1)), (3, 5))
+disturbance = ContinuousSpace(3, ((0, 0.05), (0, 0.05), (0, 0.05)))
 
 equations = [
     "x1 + tau * (u1 * cos(x3) + w1)",

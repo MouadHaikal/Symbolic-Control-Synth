@@ -22,4 +22,14 @@ class Automaton:
                       pyTargetLowerBoundCoords: tuple[int, ...],
                       pyTargetUpperBoundCoords: tuple[int, ...],
                       pathCount:                int) -> list[list[int]]: ...
+
+    def getXORController(self,
+                         pyStartStateCoords:   tuple[int, ...],
+                         pyFirstLowerBound:    tuple[int, ...],
+                         pyFirstUpperBound:    tuple[int, ...],
+                         pySecondLowerBound:   tuple[int, ...],
+                         pySecondUpperBound:   tuple[int, ...],
+                         pyTargetLowerBound:   tuple[int, ...],
+                         pyTargetUpperBound:   tuple[int, ...],
+                         pathCount:            int) -> list[list[int]]: ...
                       
