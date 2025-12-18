@@ -39,7 +39,7 @@ class App(QApplication):
 
         # Set font
         QFontDatabase.addApplicationFont("resources/Rubik.ttf")
-        self.setFont(QFont("Rubik", pointSize=12, weight=900))
+        self.setFont(QFont("Rubik", pointSize=12, weight=500))
 
         # Run
         sys.exit(self.exec())

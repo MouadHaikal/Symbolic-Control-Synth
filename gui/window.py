@@ -128,9 +128,9 @@ class Window(QMainWindow):
 
         # ========== Styling ==========
         spaceConfig.setMaximumHeight(350)
-        spaceConfigTitle.setStyleSheet("font-size: 20px; color: gray; font-family: Rubik; font-weight: 900;")
+        spaceConfigTitle.setStyleSheet("font-size: 20px; color: gray; font-family: Rubik; font-weight: 600;")
         spaceConfigTitle.setFixedHeight(30)
-        modelConfigTitle.setStyleSheet("font-size: 20px; color: gray; font-family: Rubik; font-weight: 900;")
+        modelConfigTitle.setStyleSheet("font-size: 20px; color: gray; font-family: Rubik; font-weight: 600;")
         modelConfigTitle.setFixedHeight(30)
         modelConfigContent.layout().setSpacing(50)
         timeStepForm.setFixedWidth(200)
